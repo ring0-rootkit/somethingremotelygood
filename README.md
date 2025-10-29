@@ -54,3 +54,8 @@ admin program (validate admins by their keys) to create users (using proxmox adm
 keyring generates new keys and pushes to usb, everytime the last password is used it pushes new key (so store current and last keys in db)
 
 vm auto shutdown on no connections
+
+USB key code:
+// Kernel sends random challenge
+// USB device signs challenge with private key
+// Kernel verifies signature with stored public key
