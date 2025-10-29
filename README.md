@@ -55,7 +55,12 @@ keyring generates new keys and pushes to usb, everytime the last password is use
 
 vm auto shutdown on no connections
 
-USB key code:
+## USB key code:
+detect USB
+send hello
+receive user_id
+send challenge 
+...
 // Kernel sends random challenge
 // USB device signs challenge with private key
 // Kernel verifies signature with stored public key
