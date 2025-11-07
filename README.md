@@ -64,3 +64,23 @@ send challenge
 // Kernel sends random challenge
 // USB device signs challenge with private key
 // Kernel verifies signature with stored public key
+
+## Steps
+ - [] install proxmox
+ - [] c code for
+    - [] creating VMs
+    - [] deleting VMs
+    - [] starting VMs
+    - [] stopping VMs
+ - [] code creating zfs partitions
+ - [] code for deleting zfs parttitions
+ - [] couple managing zfs partitions with VM management
+ - [] keyring
+    - [] generate password
+    - [] request password
+    - [] delete password
+ - [] client program
+ - [] adming program
+ - [] USB key
+
+
