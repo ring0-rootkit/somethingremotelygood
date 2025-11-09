@@ -3,6 +3,9 @@
 ## Core idea: 
 Host runs a single hypervisor/container host. Each worker gets a VM or container stored on a separately encrypted on-disk dataset/volume that is only decrypted when the worker presents their USB token. Admins provision VMs and manage keys via an HSM/Vault. Worker access is via SSH or RDP using keys/certs stored on their USB token (YubiKey or smartcard PIV).
 
+<img width="1194" height="1408" alt="image" src="https://github.com/user-attachments/assets/510df374-7715-4ee2-93c2-6123fe8e4af5" />
+
+
 ## Components:
 ### Hypervisor / manager:
 Docker with encryption (encrypt idk)?
@@ -33,13 +36,6 @@ Implement support for issuing short-lived SSH certificates for administration pu
 - _User_: Ability to access their VM with USB key.
 - _Admin_: Ability to create/delete VMs.
 - _Superuser_: Ability to monitor proxmox, access to master server, access to master key for kering vault.
-
-## Setup:
-
-```mermaid
-sequenceDiagram
-    admin ->> hypervisor: 
-```
 
 ## What I need to implement:
 
