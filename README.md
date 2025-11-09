@@ -5,14 +5,14 @@ Host runs a single hypervisor/container host. Each worker gets a VM or container
 
 ## Components:
 ### Hypervisor / manager:
-Proxmox VE (KVM/QEMU + LXC) with ZFS datasets.
+Docker with encryption (encrypt idk)?
 > NOTE: I'll use proxmox first then might try implementing my own hypervisor using libvirt
 
 ### Storage encryption per-VM:
-ZFS native dataset encryption (per dataset). ZFS can create encrypted datasets so each VM/container’s storage is separately encrypted and won’t be mounted until you load its key.
+Docker encryption ???????
 
 ### USB token for unlocking:
-Implement custom keychain for unlocking vms/decrypting ZFS datasets and managing keys + custom usb key using microcontroller (I have esp32c3 so ill use it for now)
+Implement custom keychain for unlocking data and managing keys + custom usb key using microcontroller (I have esp32c3 so ill use it for now)
 
 ### User authentication to the VM:
 I'll start with SSH only, (and possibly RDP support if there’s enough time)
@@ -72,9 +72,6 @@ send challenge
     - [] deleting VMs
     - [] starting VMs
     - [] stopping VMs
- - [] code creating zfs partitions
- - [] code for deleting zfs parttitions
- - [] couple managing zfs partitions with VM management
  - [] keyring
     - [] generate password
     - [] request password
