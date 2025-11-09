@@ -1,31 +1,28 @@
 # Overview
 
 ## Core idea: 
-Host runs a single hypervisor/container host. Each worker gets a VM or container stored on a separately encrypted on-disk dataset/volume that is only decrypted when the worker presents their USB token. Admins provision VMs and manage keys via an HSM/Vault. Worker access is via SSH or RDP using keys/certs stored on their USB token (YubiKey or smartcard PIV).
+Host runs a single hypervisor/container host. Each worker gets a container stored in encrypted format that is only decrypted when the worker presents their USB token. Admins provision containers and manage keys via an Database. Worker access is via SSH or RDP using keys/certs stored on their USB token (YubiKey or smartcard PIV).
 
 <img width="1194" height="1408" alt="image" src="https://github.com/user-attachments/assets/510df374-7715-4ee2-93c2-6123fe8e4af5" />
 
 
 ## Components:
 ### Hypervisor / manager:
-Docker with encryption (encrypt idk)?
-> NOTE: I'll use proxmox first then might try implementing my own hypervisor using libvirt
+Docker with per container encryption?
+> NOTE: I'll use docker first then might try implementing my own hypervisor using libvirt?
 
-### Storage encryption per-VM:
-Docker encryption ???????
-
-### USB token for unlocking:
-Implement custom keychain for unlocking data and managing keys + custom usb key using microcontroller (I have esp32c3 so ill use it for now)
+### Unlocking:
+Store keys in encrypted SQLite database. Password for decrypting database is stored as ENV variable on host.
 
 ### User authentication to the VM:
 I'll start with SSH only, (and possibly RDP support if there’s enough time)
 
 ### Short-lived access & privileged operations:
-Implement support for issuing short-lived SSH certificates for administration purpose.
+Tokens with userid and privelege id are stored in SQLite databse. When user tries to log in database is decrypted and user token is compared to the one stored in database (by userid), if they match docker will be decrypted using password stored in database and new token will be generated and sent to user.
 
 ## Requirements:
 - Runs on a single server
-- Admins create VMs
+- Admins create containers
 - Workers access only their container
 - All containers encrypted with separate keys
 - Workers connect via USB key
@@ -35,45 +32,24 @@ Implement support for issuing short-lived SSH certificates for administration pu
 ## Actors:
 - _User_: Ability to access their VM with USB key.
 - _Admin_: Ability to create/delete VMs.
-- _Superuser_: Ability to monitor proxmox, access to master server, access to master key for kering vault.
+- _Superuser_: Ability to monitor containers, access to master server, access to master key for SQLite.
 
-## What I need to implement:
-
-proxmox pre create vm hook to create zfs volume and read key from keyring
-
-keyring to create and manage keys; api for zfs creation hooks to get password
-
-client program to read key from usb and connect to vm, also update clients key if keyring asks so
-
-admin program (validate admins by their keys) to create users (using proxmox admin tool), create keys (using keyring), read other users keys (using keyring)
-
-keyring generates new keys and pushes to usb, everytime the last password is used it pushes new key (so store current and last keys in db)
-
-vm auto shutdown on no connections
+# Implementation
 
 ## USB key code:
-detect USB
-send hello
-receive user_id
-send challenge 
-...
-// Kernel sends random challenge
-// USB device signs challenge with private key
-// Kernel verifies signature with stored public key
+ - detect USB
+ - send hello
+ - receive user_id
+ - Kernel sends random challenge
+ - USB device signs challenge with private key
+ - Kernel verifies signature with stored public key
 
 ## Steps
- - [] install proxmox
- - [] c code for
-    - [] creating VMs
-    - [] deleting VMs
-    - [] starting VMs
-    - [] stopping VMs
- - [] keyring
-    - [] generate password
-    - [] request password
-    - [] delete password
- - [] client program
- - [] adming program
- - [] USB key
+ - [] write helper scripts for docker
+ - [] write 'manager' code to communicate with client (TCP)
+ - [] integrate 'manager' with sqlite
+ - [] setup sqlite with encryption
+ - [] write client code for communication
+ - [] implement usb token
 
 
