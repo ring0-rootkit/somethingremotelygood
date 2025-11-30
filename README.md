@@ -1,3 +1,25 @@
+# Usage
+## Build
+**Manager:**
+Build:
+```sh
+make manager
+```
+Usage:
+```sh
+make env
+./manager
+```
+**Client:**
+Build:
+```sh
+make client
+```
+Usage:
+```sh
+./client
+```
+
 # Overview
 
 ## Core idea: 

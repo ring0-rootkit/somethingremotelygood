@@ -1,3 +1,8 @@
-1) write all the modules in README
-2) finish mermaid diagram
-3) start hypervisor implementation (in c manage vms)
+1) link with sqlcypher and test
+2) move errors to defines
+3) list all containers user can access
+4) implement container lock using usb key
+5) create encrypted directory in container
+6) stop container (somehow)
+7) inject key only on container creation
+8) create docker file for ubuntu and openssh

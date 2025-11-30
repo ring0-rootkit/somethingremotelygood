@@ -1,2 +1,6 @@
 *.iso
+.env
 **/main
+keys
+build
+*.db
