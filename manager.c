@@ -237,7 +237,8 @@ int db_init_schema(void) {
     const char *sql =
         "CREATE TABLE IF NOT EXISTS users ("
         " user_id TEXT PRIMARY KEY,"
-        " public_key_pem TEXT NOT NULL"
+        " public_key_pem TEXT NOT NULL,"
+        " public_key_ssh TEXT NOT NULL"
         " );"
         "CREATE TABLE IF NOT EXISTS containers ("
         " container_id TEXT PRIMARY KEY,"
@@ -253,12 +254,13 @@ int db_init_schema(void) {
     return 0;
 }
 
-int db_add_user(const char *user_id, const char *public_key_pem) {
-    const char *sql = "INSERT OR REPLACE INTO users(user_id, public_key_pem) VALUES(?,?)";
+int db_add_user(const char *user_id, const char *public_key_pem, const char *public_key_ssh) {
+    const char *sql = "INSERT OR REPLACE INTO users(user_id, public_key_pem, public_key_ssh) VALUES(?,?, ?)";
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
     sqlite3_bind_text(stmt, 1, user_id, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 2, public_key_pem, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, public_key_ssh, -1, SQLITE_STATIC);
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE) ? 0 : -1;
@@ -278,6 +280,27 @@ int db_add_container(const char *container_id, const char *user_id, const uint8_
 
 int db_get_user_pubkey(const char *user_id, char *pubkey_out, size_t outlen) {
     const char *sql = "SELECT public_key_pem FROM users WHERE user_id = ?";
+    sqlite3_stmt *stmt;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, user_id, -1, SQLITE_STATIC);
+
+    int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        const unsigned char *pk = sqlite3_column_text(stmt, 0);
+        if (pk) {
+            strncpy(pubkey_out, (const char *)pk, outlen-1);
+            pubkey_out[outlen-1] = '\0';
+            sqlite3_finalize(stmt);
+            return 0;
+        }
+    }
+    sqlite3_finalize(stmt);
+    return -1;
+}
+
+int db_get_user_pubkey_ssh(const char *user_id, char *pubkey_out, size_t outlen) {
+    const char *sql = "SELECT public_key_ssh FROM users WHERE user_id = ?";
     sqlite3_stmt *stmt;
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
@@ -479,7 +502,7 @@ int docker_assign_secret_to_container(const char *secret_name, const char *conta
     return 0;
 }
 
-int docker_create_user_and_inject_ssh(const char *container_id, const char *userid, const char *pubkey_pem) {
+int docker_create_user_and_inject_ssh(const char *container_id, const char *userid, const char *pubkey_pem, const char *pubkey_ssh) {
     // 1. Create user if it doesn't exist
     char cmd[1024];
     snprintf(cmd, sizeof(cmd),
@@ -502,16 +525,9 @@ int docker_create_user_and_inject_ssh(const char *container_id, const char *user
         return -1;
     }
 
-    // 3. Convert PEM -> OpenSSH
-    char sshkey[4096];
-    if (pem_to_openssh(pubkey_pem, sshkey, sizeof(sshkey)) != 0) {
-        fprintf(stderr, "[ERR] Failed to convert PEM to OpenSSH key\n");
-        return -1;
-    }
-
     // 4. Write temporary OpenSSH key file
     char tmp[256];
-    if (write_temp("/tmp/sshkey", sshkey, strlen(sshkey), tmp, sizeof(tmp)) != 0) {
+    if (write_temp("/tmp/sshkey", pubkey_ssh, strlen(pubkey_ssh), tmp, sizeof(tmp)) != 0) {
         fprintf(stderr, "[ERR] Failed to write temp SSH key\n");
         return -1;
     }
@@ -649,6 +665,12 @@ void handle_client(int client_fd) {
         return;
     }
 
+    char pubkey_ssh[4096];
+    if (db_get_user_pubkey_ssh(userid, pubkey_ssh, sizeof(pubkey_ssh)) != 0) {
+        write(client_fd, "ERR NO_USER", 10);
+        return;
+    }
+
     // -----------------------------
     // 5. Verify signature
     // -----------------------------
@@ -706,7 +728,7 @@ void handle_client(int client_fd) {
     // -----------------------------
     // 9. Inject user's SSH public key
     // -----------------------------
-    if (docker_create_user_and_inject_ssh(containerid, userid, pubkey_pem) != 0) {
+    if (docker_create_user_and_inject_ssh(containerid, userid, pubkey_pem, pubkey_ssh) != 0) {
         write(client_fd, "ERR INJECT_SSH", 13);
         return;
     }
@@ -768,13 +790,19 @@ static void usage(const char *prog) {
 }
 
 int cmd_add_user(int argc, char **argv) {
-    if (argc < 3) { fprintf(stderr, "missing args\n"); return -1; }
+    if (argc < 4) { fprintf(stderr, "missing args\n"); return -1; }
     const char *user_id = argv[1];
     const char *pem_path = argv[2];
+    const char *ssh_path = argv[3];
     FILE *f = fopen(pem_path, "r"); if (!f) { perror("fopen"); return -1; }
     fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f,0,SEEK_SET);
     char *buf = malloc(sz+1); fread(buf,1,sz,f); buf[sz]='\0'; fclose(f);
-    int r = db_add_user(user_id, buf);
+
+    f = fopen(ssh_path, "r"); if (!f) { perror("fopen"); return -1; }
+    fseek(f, 0, SEEK_END); sz = ftell(f); fseek(f,0,SEEK_SET);
+    char *buf_ssh = malloc(sz+1); fread(buf_ssh,1,sz,f); buf_ssh[sz]='\0'; fclose(f);
+
+    int r = db_add_user(user_id, buf, buf_ssh);
     free(buf);
     if (r == 0) printf("Added user %s\n", user_id); else printf("Failed to add user\n");
     return r;

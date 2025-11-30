@@ -1,19 +1,21 @@
 package main
 
 import (
-    "crypto"
-    "crypto/rand"
-    "crypto/rsa"
-    "crypto/sha256"
-    "crypto/x509"
-    "encoding/pem"
-    "fmt"
-    "golang.org/x/crypto/ssh"
-    "net"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "time"
+	"bytes"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 //
@@ -69,7 +71,12 @@ func exportOpenSSHPrivateKey(priv *rsa.PrivateKey) ([]byte, error) {
     if err != nil {
         return nil, fmt.Errorf("MarshalPrivateKey failed: %w", err)
     }
-    return openssh.Bytes, nil
+    buf := new(bytes.Buffer)
+
+    if err := pem.Encode(buf, openssh); err != nil {
+	panic(err)
+    }
+    return buf.Bytes(), nil
 }
 
 // Export OpenSSH public key ("ssh-rsa ...")

@@ -9,5 +9,5 @@ keygen: FORCE
 	openssl genrsa -out keys/_private.pem 2048
 	openssl rsa -in keys/_private.pem -pubout -out keys/_public.pem
 	openssl rand -out keys/_symmetric.bin 32
-
+	ssh-keygen -f keys/_public.pem -i -m PKCS8 > keys/_public_openssh.pub
 
