@@ -6,3 +6,4 @@
 6) stop container (somehow)
 7) inject key only on container creation
 8) create docker file for ubuntu and openssh
+9) stop container when unused
