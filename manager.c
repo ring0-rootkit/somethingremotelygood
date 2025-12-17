@@ -2,8 +2,7 @@
 // Secure VM/container manager - polished implementation
 // - SQLCipher-encrypted SQLite database layer (init, add user/container, fetch keys)
 // - Docker helpers (create container record, start/stop/unlock, inject SSH pubkey)
-// - Manager server (TCP challenge-response flow). USB token handling is left as stubs
-//   per your request.
+// - Manager server (TCP challenge-response flow).
 //
 // BUILD (example):
 //   gcc -o manager manager.c -lsqlite3 -lssl -lcrypto
