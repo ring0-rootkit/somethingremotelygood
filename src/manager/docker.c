@@ -81,7 +81,25 @@ int docker_create_user_and_inject_ssh(const char *container_id, const char *user
         "docker exec %s chmod 600 /home/%s/.ssh/authorized_keys && "
         "docker exec %s chown %s:%s /home/%s/.ssh/authorized_keys",
         container_id, userid, container_id, userid, userid, userid);
-    return run_cmd_shell(cmd);
+    if (run_cmd_shell(cmd) != 0) return -1;
+
+    snprintf(cmd, sizeof(cmd),
+        "docker exec %s sh -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y sudo'",
+        container_id);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to install sudo in container %s\n", container_id);
+        return -1;
+    }
+
+    snprintf(cmd, sizeof(cmd),
+        "docker exec %s sh -c 'echo \"%s ALL=(ALL) NOPASSWD:ALL\" > /etc/sudoers.d/%s && chmod 440 /etc/sudoers.d/%s'",
+        container_id, userid, userid, userid);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to add %s to sudoers in container %s\n", userid, container_id);
+        return -1;
+    }
+
+    return 0;
 }
 
 int docker_unlock_container(const char *container_id, const uint8_t *key, size_t key_len) {

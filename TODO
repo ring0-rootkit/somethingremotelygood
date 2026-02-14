@@ -1,6 +1,5 @@
 MAIN TASKS:
-1) use root user by default or setup root user so the client can use sudo
-2) actually encrypt container and not just copy the password in it
+1) actually encrypt container and not just copy the password in it
 3) store prebuilt docker container with downloaded base packages so container creation is faster
 
 

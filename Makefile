@@ -1,4 +1,4 @@
-.PHONY: FORCE all clean manager client keygen
+.PHONY: FORCE all clean manager client keygen clean-containers
 
 all: manager client
 
@@ -29,5 +29,22 @@ keygen: FORCE
 
 clean:
 	rm -f src/manager/*.o build/manager build/client
+
+clean-containers:
+	-docker ps -aq | xargs -r docker stop
+	-docker ps -aq | xargs -r docker rm -f
+
+register-user:
+	@if [ -z "$(USER)" ] || [ -z "$(CONTAINER)" ]; then \
+		echo "Usage: make register-user USER=<username> CONTAINER=<container_id>"; \
+		echo "Optional: PEM=path/to/key.pem SSH=path/to/key.pub KEY=path/to/container.key"; \
+		exit 1; \
+	fi
+	@echo "Registering user $(USER) with container $(CONTAINER)..."
+	@PEM_FILE="$${PEM:-keys/_public.pem}"; \
+	SSH_FILE="$${SSH:-keys/_public_openssh.pub}"; \
+	KEY_FILE="$${KEY:-keys/_symmetric.bin}"; \
+	./build/manager add-user "$(USER)" "$$PEM_FILE" "$$SSH_FILE" && \
+	./build/manager add-container "$(CONTAINER)" "$(USER)" "$$KEY_FILE"
 
 FORCE:
