@@ -7,6 +7,8 @@
 #include <string.h>
 
 int main(int argc, char **argv) {
+    setbuf(stdout, NULL);
+
     if (argc < 2) { usage(argv[0]); return 1; }
 
     const char *db_pass = getenv("DB_PASSWORD");

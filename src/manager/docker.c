@@ -1,15 +1,24 @@
 #include "docker.h"
+#include "volume.h"
 #include "utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
+#include <sys/stat.h>
 
-int docker_create_basic_container(const char *container_id, const char *image, const char *user_id) {
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd),
-        "docker create -p 0:22 --name %s --hostname %s %s /bin/sh -c 'while true; do sleep 3600; done'",
-        container_id, container_id, image);
+int docker_create_basic_container(const char *container_id, const char *image, const char *user_id, const char *home_mount) {
+    char cmd[1024];
+    if (home_mount && strlen(home_mount) > 0) {
+        snprintf(cmd, sizeof(cmd),
+            "docker create -p 0:22 --name %s --hostname %s -v %s:/home/%s %s /bin/sh -c 'while true; do sleep 3600; done'",
+            container_id, container_id, home_mount, user_id, image);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+            "docker create -p 0:22 --name %s --hostname %s %s /bin/sh -c 'while true; do sleep 3600; done'",
+            container_id, container_id, image);
+    }
     return run_cmd_shell(cmd);
 }
 
@@ -20,30 +29,66 @@ int docker_start_container(const char *container_id) {
 
 int docker_stop_container(const char *container_id) {
     char *argv[] = {"docker","stop",(char *)container_id,NULL};
-    return run_cmdv(argv);
+    int r = run_cmdv(argv);
+    volume_close_encrypted_home(container_id);
+    return r;
 }
 
 int docker_remove_container(const char *container_id) {
     char *argv[] = {"docker","rm","-f",(char *)container_id,NULL};
-    return run_cmdv(argv);
-}
-
-int docker_create_secret_from_key(const char *secret_name, const uint8_t *key, size_t key_len) {
-    char tmp[256];
-    if (write_temp("/tmp/secret", key, key_len, tmp, sizeof(tmp)) != 0) return -1;
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "docker secret create %s %s >/dev/null 2>&1 || true", secret_name, tmp);
-    int r = run_cmd_shell(cmd);
-    unlink(tmp);
+    int r = run_cmdv(argv);
+    volume_close_encrypted_home(container_id);
     return r;
 }
 
-int docker_assign_secret_to_container(const char *secret_name, const char *container_id) {
-    (void)secret_name; (void)container_id;
+int docker_setup_ssh_in_volume(const char *mount_point, const char *userid, const char *pubkey_ssh) {
+    char ssh_dir[512];
+    char auth_keys[512];
+
+    snprintf(ssh_dir, sizeof(ssh_dir), "%s/.ssh", mount_point);
+    snprintf(auth_keys, sizeof(auth_keys), "%s/.ssh/authorized_keys", mount_point);
+
+    struct stat st;
+    int needs_setup = 1;
+    if (stat(auth_keys, &st) == 0 && st.st_size > 0) {
+        needs_setup = 0;
+    }
+
+    if (needs_setup) {
+        if (mkdir(ssh_dir, 0700) != 0 && errno != EEXIST) {
+            fprintf(stderr, "[ERR] Failed to create .ssh dir in volume: %s\n", ssh_dir);
+            return -1;
+        }
+
+        FILE *f = fopen(auth_keys, "w");
+        if (!f) {
+            fprintf(stderr, "[ERR] Failed to create authorized_keys in volume\n");
+            return -1;
+        }
+        if (!pubkey_ssh || strlen(pubkey_ssh) == 0) {
+            fprintf(stderr, "[ERR] Empty SSH public key for user %s\n", userid);
+            fclose(f);
+            unlink(auth_keys);
+            return -1;
+        }
+        fprintf(f, "%s\n", pubkey_ssh);
+        fclose(f);
+
+        chmod(auth_keys, 0600);
+        chmod(ssh_dir, 0700);
+
+        printf("[INFO] SSH keys set up in volume for %s (%zu bytes)\n", userid, strlen(pubkey_ssh));
+    } else {
+        printf("[INFO] SSH already set up in volume for %s\n", userid);
+    }
+
     return 0;
 }
 
 int docker_create_user_and_inject_ssh(const char *container_id, const char *userid, const char *pubkey_pem, const char *pubkey_ssh) {
+    (void)pubkey_pem;
+    (void)pubkey_ssh;
+
     char cmd[1024];
     snprintf(cmd, sizeof(cmd),
         "docker exec %s id -u %s >/dev/null 2>&1 || "
@@ -53,35 +98,6 @@ int docker_create_user_and_inject_ssh(const char *container_id, const char *user
         fprintf(stderr, "[ERR] Failed to create user %s in container %s\n", userid, container_id);
         return -1;
     }
-
-    snprintf(cmd, sizeof(cmd),
-        "docker exec %s mkdir -p /home/%s/.ssh && "
-        "docker exec %s chmod 700 /home/%s/.ssh && "
-        "docker exec %s chown %s:%s /home/%s/.ssh",
-        container_id, userid, container_id, userid, container_id, userid, userid, userid);
-    if (run_cmd_shell(cmd) != 0) {
-        fprintf(stderr, "[ERR] Failed to create .ssh dir for %s in container %s\n", userid, container_id);
-        return -1;
-    }
-
-    char tmp[256];
-    if (write_temp("/tmp/sshkey", pubkey_ssh, strlen(pubkey_ssh), tmp, sizeof(tmp)) != 0) {
-        fprintf(stderr, "[ERR] Failed to write temp SSH key\n");
-        return -1;
-    }
-
-    snprintf(cmd, sizeof(cmd),
-        "docker cp %s %s:/home/%s/.ssh/authorized_keys",
-        tmp, container_id, userid);
-    int r = run_cmd_shell(cmd);
-    unlink(tmp);
-    if (r != 0) return -1;
-
-    snprintf(cmd, sizeof(cmd),
-        "docker exec %s chmod 600 /home/%s/.ssh/authorized_keys && "
-        "docker exec %s chown %s:%s /home/%s/.ssh/authorized_keys",
-        container_id, userid, container_id, userid, userid, userid);
-    if (run_cmd_shell(cmd) != 0) return -1;
 
     snprintf(cmd, sizeof(cmd),
         "docker exec %s sh -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y sudo'",
@@ -102,18 +118,17 @@ int docker_create_user_and_inject_ssh(const char *container_id, const char *user
     return 0;
 }
 
-int docker_unlock_container(const char *container_id, const uint8_t *key, size_t key_len) {
-    char tmp[256];
-    if (write_temp("/tmp/ctrkey", key, key_len, tmp, sizeof(tmp)) != 0) return -1;
-
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "docker cp %s %s:/root/container_key.bin", tmp, container_id);
-    int r = run_cmd_shell(cmd);
-    unlink(tmp);
-    if (r != 0) return -1;
-
-    snprintf(cmd, sizeof(cmd), "docker exec %s test -f /root/container_key.bin || true", container_id);
-    return run_cmd_shell(cmd);
+int docker_fix_ssh_permissions(const char *container_id, const char *userid) {
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd),
+        "docker exec %s chown -R %s:%s /home/%s",
+        container_id, userid, userid, userid);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[WARN] Failed to fix home permissions for %s in %s\n", userid, container_id);
+        return -1;
+    }
+    printf("[INFO] Fixed home permissions for %s in container %s\n", userid, container_id);
+    return 0;
 }
 
 int docker_ensure_sshd_running(const char *container_id) {

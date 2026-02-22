@@ -1,4 +1,4 @@
-.PHONY: FORCE all clean manager client keygen clean-containers
+.PHONY: FORCE all clean manager client keygen clean-containers cleanup-luks
 
 all: manager client
 
@@ -7,16 +7,17 @@ MANAGER_SRC = src/manager/main.c \
               src/manager/crypto.c \
               src/manager/utils.c \
               src/manager/docker.c \
+              src/manager/volume.c \
               src/manager/server.c \
               src/manager/cli.c
 
 MANAGER_OBJ = $(MANAGER_SRC:.c=.o)
 
 manager: $(MANAGER_OBJ)
-	gcc -o build/manager $(MANAGER_OBJ) -lsqlite3 -lssl -lcrypto
+	gcc -o build/manager $(MANAGER_OBJ) -lsqlite3 -lssl -lcrypto -lpthread  -Wall -Wextra -Werror
 
 src/manager/%.o: src/manager/%.c
-	gcc -c $< -o $@ -I src/manager
+	gcc -c $< -o $@ -I src/manager -Wall -Wextra -Werror
 
 client: src/client/*.go
 	go build -o build/client ./src/client/
@@ -34,6 +35,17 @@ clean-containers:
 	-docker ps -aq | xargs -r docker stop
 	-docker ps -aq | xargs -r docker rm -f
 
+cleanup-luks:
+	@echo "Cleaning up stale LUKS devices..."
+	-@for dev in $$(ls /dev/mapper/ | grep "^somethinigremotelygood_"); do \
+		echo "Closing $$dev"; \
+		umount "/dev/mapper/$$dev" 2>/dev/null || true; \
+		cryptsetup close "$$dev" 2>/dev/null || true; \
+	done
+	-@for dir in homes/*_mnt; do \
+		[ -d "$$dir" ] && rmdir "$$dir" 2>/dev/null || true; \
+	done
+
 register-user:
 	@if [ -z "$(USER)" ] || [ -z "$(CONTAINER)" ]; then \
 		echo "Usage: make register-user USER=<username> CONTAINER=<container_id>"; \
@@ -48,3 +60,8 @@ register-user:
 	./build/manager add-container "$(CONTAINER)" "$(USER)" "$$KEY_FILE"
 
 FORCE:
+
+manager-run: FORCE
+	sudo DB_PASSWORD=123 ./build/manager serve 2>&1 | tee manager.log
+client-run: FORCE
+	./build/client localhost 5555 bob bob keys/_private.pem

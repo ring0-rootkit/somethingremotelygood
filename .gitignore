@@ -4,3 +4,5 @@
 keys
 build
 *.db
+homes/
+*.o

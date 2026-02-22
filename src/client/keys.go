@@ -38,7 +38,6 @@ func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 	return nil, fmt.Errorf("unsupported private key format")
 }
 
-// Export OpenSSH *private* key ("BEGIN OPENSSH PRIVATE KEY")
 func exportOpenSSHPrivateKey(priv *rsa.PrivateKey) ([]byte, error) {
 	openssh, err := ssh.MarshalPrivateKey(priv, "")
 	if err != nil {
@@ -52,7 +51,6 @@ func exportOpenSSHPrivateKey(priv *rsa.PrivateKey) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Export OpenSSH public key ("ssh-rsa ...")
 func exportOpenSSHPublicKey(priv *rsa.PrivateKey) ([]byte, error) {
 	pub, err := ssh.NewPublicKey(&priv.PublicKey)
 	if err != nil {
@@ -61,7 +59,6 @@ func exportOpenSSHPublicKey(priv *rsa.PrivateKey) ([]byte, error) {
 	return ssh.MarshalAuthorizedKey(pub), nil
 }
 
-// Create temp directory and store id_rsa + id_rsa.pub
 func createTempSSHKeypair(priv *rsa.PrivateKey) (string, string, error) {
 	tmpdir := fmt.Sprintf("/tmp/sshkey-%d", os.Getpid())
 	os.MkdirAll(tmpdir, 0700)

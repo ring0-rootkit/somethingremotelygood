@@ -1,15 +1,31 @@
-MAIN TASKS:
-1) actually encrypt container and not just copy the password in it
-3) store prebuilt docker container with downloaded base packages so container creation is faster
+### MAIN TASKS:
+1) Store prebuilt docker container with downloaded base packages so container creation is faster
+3) Use usb key
+
+### For usb key:
+1) load keys to usb (custom command)
+2) read keys from usb (in client)
+3) how secure would it be?
+4) think about security if it is ok to just store keys on the (digital) key itself
+
+### COMPLETED:
+2) Change home directory permissions from root to client's user
+1) Actually encrypt container and not just copy the password in it
+2) Implement automatic container stop when user disconnects SSH
+3) Add background cleanup thread for stopped containers
+4) Fix SSH key setup to use encrypted volume instead of container overlay
+
+### SECONDARY TASKS:
+1) Link with sqlcipher and test
+2) List all containers user can access (client side)
+3) Stop container when unused
+
+### FIGURE OUT:
+1) How to stop container
+2) How to create it and provision secrets
 
 
-SECONDARY TASKS:
-1) link with sqlcypher and test
-2) move errors to defines
-3) list all containers user can access
-4) implement container lock using usb key
-5) create encrypted directory in container
-6) stop container (somehow)
-7) inject key only on container creation
-8) create docker file for ubuntu and openssh
-9) stop container when unused
+### TO WRITE:
+1) key types that I use and how they work and all the math
+2) LUKS and how it works
+3) usb key algorithm

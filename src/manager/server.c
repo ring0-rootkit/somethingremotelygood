@@ -3,12 +3,41 @@
 #include "database.h"
 #include "crypto.h"
 #include "docker.h"
+#include "volume.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <pthread.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <openssl/rand.h>
+
+#define CLEANUP_INTERVAL_SEC 10
+
+static volatile int server_running = 1;
+static int server_socket = -1;
+static pthread_t cleanup_thread;
+
+static void *cleanup_worker(void *arg) {
+    (void)arg;
+    while (server_running) {
+        sleep(CLEANUP_INTERVAL_SEC);
+        if (!server_running) break;
+        volume_cleanup_stopped_containers();
+    }
+    return NULL;
+}
+
+static void signal_handler(int sig) {
+    (void)sig;
+    printf("\n[INFO] Shutting down manager, cleaning up encrypted volumes...\n");
+    server_running = 0;
+    volume_cleanup_all();
+    if (server_socket >= 0) {
+        close(server_socket);
+    }
+}
 
 void handle_client(int client_fd) {
     char userid[128];
@@ -16,6 +45,8 @@ void handle_client(int client_fd) {
     uint8_t challenge[CHALLENGE_SIZE];
     uint8_t signature[1024];
     size_t sig_len = 0;
+
+    volume_cleanup_stopped_containers();
 
     ssize_t r = read(client_fd, userid, sizeof(userid)-1);
     if (r <= 0) {
@@ -72,18 +103,40 @@ void handle_client(int client_fd) {
         return;
     }
 
+    if (!volume_is_home_encrypted(containerid)) {
+        printf("[INFO] Creating encrypted home for %s...\n", containerid);
+        if (volume_create_encrypted_home(containerid, container_key, sizeof(container_key)) != 0) {
+            write(client_fd, "ERR ENCRYPT_HOME", 16);
+            return;
+        }
+    }
+
+    char mount_point[512];
+    if (volume_open_encrypted_home(containerid, container_key, sizeof(container_key), mount_point, sizeof(mount_point)) != 0) {
+        write(client_fd, "ERR OPEN_HOME", 13);
+        return;
+    }
+    printf("[INFO] Encrypted home mounted at %s\n", mount_point);
+
+    if (docker_setup_ssh_in_volume(mount_point, userid, pubkey_ssh) != 0) {
+        write(client_fd, "ERR SSH_SETUP", 13);
+        volume_close_encrypted_home(containerid);
+        return;
+    }
+
     if (docker_start_container(containerid) != 0) {
         printf("[INFO] Container %s not found, creating...\n", containerid);
-        int res = docker_create_basic_container(containerid, "ubuntu:22.04", userid);
+        int res = docker_create_basic_container(containerid, "ubuntu:22.04", userid, mount_point);
         if (res != 0) {
             printf("[INFO] Container %s setup returned error, %d\n", containerid, res);
+            volume_close_encrypted_home(containerid);
             return;
         }
         docker_start_container(containerid);
     }
-    if (docker_unlock_container(containerid, container_key, sizeof(container_key)) != 0) {
-        write(client_fd, "ERR UNLOCK_FAIL", 15);
-        return;
+
+    if (docker_fix_ssh_permissions(containerid, userid) != 0) {
+        fprintf(stderr, "[WARN] Could not fix SSH permissions, SSH may fail\n");
     }
 
     if (docker_ensure_sshd_running(containerid) != 0) {
@@ -112,27 +165,117 @@ void handle_client(int client_fd) {
     char info[128];
     snprintf(info, sizeof(info), "%d\n", ssh_port);
     write(client_fd, info, strlen(info));
-    sleep(1);
+
+    printf("[INFO] Waiting for user to connect via SSH to %s...\n", containerid);
+
+    int ssh_connected = 0;
+    int connect_wait = 0;
+    while (!ssh_connected && connect_wait < 60) {
+        char cmd[256];
+        snprintf(cmd, sizeof(cmd), "docker exec %s sh -c 'netstat -tn 2>/dev/null | grep :22 | grep ESTABLISHED | wc -l' 2>/dev/null || echo 0", containerid);
+        FILE *f = popen(cmd, "r");
+        if (f) {
+            char buf[16];
+            if (fgets(buf, sizeof(buf), f)) {
+                int connections = atoi(buf);
+                if (connections > 0) {
+                    ssh_connected = 1;
+                    printf("[INFO] SSH connection detected on %s\n", containerid);
+                }
+            }
+            pclose(f);
+        }
+        if (!ssh_connected) {
+            sleep(1);
+            connect_wait++;
+        }
+    }
+
+    if (!ssh_connected) {
+        printf("[INFO] No SSH connection to %s within 60s, stopping container\n", containerid);
+        docker_stop_container(containerid);
+        printf("[INFO] Container %s stopped and home encrypted\n", containerid);
+        return;
+    }
+
+    printf("[INFO] Waiting for SSH connections to close on %s...\n", containerid);
+
+    int ssh_active = 1;
+    int check_count = 0;
+    int empty_count = 0;
+    while (ssh_active && check_count < 1800) {
+        char cmd[256];
+        snprintf(cmd, sizeof(cmd), "docker exec %s sh -c 'netstat -tn 2>/dev/null | grep :22 | grep ESTABLISHED | wc -l' 2>/dev/null || echo 0", containerid);
+        FILE *f = popen(cmd, "r");
+        if (f) {
+            char buf[16];
+            if (fgets(buf, sizeof(buf), f)) {
+                int connections = atoi(buf);
+                if (connections == 0) {
+                    empty_count++;
+                    if (empty_count >= 3) {
+                        ssh_active = 0;
+                        printf("[INFO] No active SSH connections on %s, stopping container\n", containerid);
+                    }
+                } else {
+                    empty_count = 0;
+                }
+            }
+            pclose(f);
+        }
+        if (ssh_active) {
+            sleep(1);
+            check_count++;
+        }
+    }
+
+    if (ssh_active) {
+        printf("[INFO] Timeout reached for %s, stopping container\n", containerid);
+    }
+
+    docker_stop_container(containerid);
+    printf("[INFO] Container %s stopped and home encrypted\n", containerid);
 }
 
 int start_manager() {
-    int s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s < 0) { perror("socket"); return -1; }
-    int opt = 1; setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
-    struct sockaddr_in addr = {0};
-    addr.sin_family = AF_INET; addr.sin_addr.s_addr = INADDR_ANY; addr.sin_port = htons(MANAGER_PORT);
+    if (pthread_create(&cleanup_thread, NULL, cleanup_worker, NULL) != 0) {
+        fprintf(stderr, "[ERR] Failed to create cleanup thread\n");
+        return -1;
+    }
 
-    if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) { perror("bind"); close(s); return -1; }
-    if (listen(s, 5) < 0) { perror("listen"); close(s); return -1; }
+    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket < 0) { perror("socket"); return -1; }
+    int opt = 1; setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    printf("Manager running on port %d...\n", MANAGER_PORT);
-    while (1) {
-        int client_fd = accept(s, NULL, NULL);
-        if (client_fd < 0) continue;
+    struct sockaddr_in addr = {
+        .sin_family = AF_INET,
+        .sin_addr.s_addr = INADDR_ANY,
+        .sin_port = htons(MANAGER_PORT),
+    };
+
+    if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) { 
+        perror("bind"); close(server_socket); return -1; 
+    }
+    if (listen(server_socket, 5) < 0) { 
+        perror("listen"); close(server_socket); return -1; 
+    }
+
+    printf("Manager running on port %d... (Press Ctrl+C to stop)\n", MANAGER_PORT);
+    printf("[INFO] Cleanup thread started (interval: %d seconds)\n", CLEANUP_INTERVAL_SEC);
+    while (server_running) {
+        int client_fd = accept(server_socket, NULL, NULL);
+        if (client_fd < 0) {
+            if (!server_running) break;
+            continue;
+        }
         handle_client(client_fd);
         close(client_fd);
     }
-    close(s);
+    close(server_socket);
+
+    pthread_join(cleanup_thread, NULL);
     return 0;
 }

@@ -143,3 +143,38 @@ flowchart TD
     H --> I[Возврат порта демону]
     I --> Z[Завершение работы C-менеджера]
 ```
+
+
+changelog:
+
+**2026-02-14:**
+- Implemented encrypted home directories using LUKS/dm-crypt
+  - Created `volume.c/h` for managing encrypted volumes
+  - Home directories are stored in `./homes/<container_id>.img` (100MB encrypted loopback files)
+  - LUKS encryption with container key, decrypted on host and bind-mounted to container
+  - Automatic cleanup when container stops (umount + cryptsetup close)
+  - Background thread monitors containers every 10s (configurable), closes volumes for stopped containers
+  
+- Fixed SSH authentication for encrypted volumes
+  - SSH keys now set up directly in the encrypted volume (host side) instead of container overlay
+  - Added `docker_setup_ssh_in_volume()` to create `.ssh/authorized_keys` in the mounted volume
+  - Added `docker_fix_ssh_permissions()` to run `chown` inside container for proper ownership
+  - Keys persist across container restarts since they're in the encrypted volume
+  
+- Added automatic container lifecycle management
+  - Manager waits for user to connect via SSH (up to 60s timeout)
+  - Monitors SSH connections, detects when user disconnects
+  - Automatically stops container and encrypts home when no active SSH connections
+  - 30-minute timeout as fallback if connections don't close properly
+  
+- Added Makefile commands
+  - `make clean-containers` - stops and removes all Docker containers
+  - `make cleanup-luks` - closes stale LUKS devices and removes mount points
+  - `make register-user USER=<name> CONTAINER=<id>` - registers user and creates container
+
+- Added signal handling for graceful shutdown (SIGINT/SIGTERM)
+  - Cleans up all mounted encrypted volumes on shutdown
+  
+- Root privileges required for LUKS operations
+  - Manager must run with sudo for cryptsetup to work
+
