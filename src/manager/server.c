@@ -135,19 +135,19 @@ void handle_client(int client_fd) {
         docker_start_container(containerid);
     }
 
+    printf("sshd is running\n");
+
+    if (docker_create_user_and_inject_ssh(containerid, userid, pubkey_pem, pubkey_ssh) != 0) {
+        write(client_fd, "ERR INJECT_SSH", 13);
+        return;
+    }
+
     if (docker_fix_ssh_permissions(containerid, userid) != 0) {
         fprintf(stderr, "[WARN] Could not fix SSH permissions, SSH may fail\n");
     }
 
     if (docker_ensure_sshd_running(containerid) != 0) {
         write(client_fd, "ERR SSHD_FAIL", 13);
-        return;
-    }
-
-    printf("sshd is running\n");
-
-    if (docker_create_user_and_inject_ssh(containerid, userid, pubkey_pem, pubkey_ssh) != 0) {
-        write(client_fd, "ERR INJECT_SSH", 13);
         return;
     }
 

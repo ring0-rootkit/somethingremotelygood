@@ -14,7 +14,7 @@ MANAGER_SRC = src/manager/main.c \
 MANAGER_OBJ = $(MANAGER_SRC:.c=.o)
 
 manager: $(MANAGER_OBJ)
-	gcc -o build/manager $(MANAGER_OBJ) -lsqlite3 -lssl -lcrypto -lpthread  -Wall -Wextra -Werror
+	gcc -o build/manager $(MANAGER_OBJ) -lsqlcipher -lssl -lcrypto -lpthread  -Wall -Wextra -Werror
 
 src/manager/%.o: src/manager/%.c
 	gcc -c $< -o $@ -I src/manager -Wall -Wextra -Werror

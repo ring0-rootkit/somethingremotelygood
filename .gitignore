@@ -6,3 +6,4 @@ build
 *.db
 homes/
 *.o
+logs
