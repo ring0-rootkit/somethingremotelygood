@@ -24,9 +24,52 @@ client: src/client/*.go
 
 keygen: FORCE
 	openssl genrsa -out keys/_private.pem 2048
-	openssl rsa -in keys/_private.pem -pubout -out keys/_public.pem
+	openssl rsa -in keys/_private.pem -pubout -keys/_public.pem
 	openssl rand -out keys/_symmetric.bin 32
 	ssh-keygen -f keys/_public.pem -i -m PKCS8 > keys/_public_openssh.pub
+
+esp32-keygen: FORCE
+	python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --generate
+
+esp32-upload: FORCE
+	@echo "Uploading ESP32 SSH Agent..."
+	@if command -v pio >/dev/null 2>&1; then \
+		cd esp32/ssh_agent && pio run --target upload; \
+	elif command -v arduino-cli >/dev/null 2>&1; then \
+		arduino-cli compile -b esp32:esp32:esp32dev esp32/ssh_agent/ && \
+		arduino-cli upload -b esp32:esp32:esp32dev -p /dev/ttyUSB0 esp32/ssh_agent/; \
+	else \
+		echo "PlatformIO or Arduino CLI not found. Please install one of them."; \
+		exit 1; \
+	fi
+
+esp32-monitor: FORCE
+	@if command -v pio >/dev/null 2>&1; then \
+		cd esp32/ssh_agent && pio device monitor; \
+	elif command -v screen >/dev/null 2>&1; then \
+		screen /dev/ttyUSB0 115200; \
+	else \
+		echo "Cannot monitor. Install platformio or screen."; \
+	fi
+
+esp32-get-key: FORCE
+	python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key
+
+esp32-sign: FORCE
+	@if [ -z "$(CHALLENGE)" ]; then \
+		echo "Usage: make esp32-sign CHALLENGE=<hex-challenge>"; \
+		echo "Example: make esp32-sign CHALLENGE=0102030405060708090a0b0c0d0e0f10"; \
+		exit 1; \
+	fi
+	python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --sign "$(CHALLENGE)"
+
+agent-bridge: FORCE
+	@echo "Starting ESP32 SSH Agent Bridge..."
+	@echo "Run in another terminal, then use: SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh ..."
+	python3 wrapper/esp32_agent_bridge.py /dev/ttyUSB0
+
+agent-test: FORCE
+	SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh-add -l
 
 clean:
 	rm -f src/manager/*.o build/manager build/client
@@ -59,9 +102,30 @@ register-user:
 	./build/manager add-user "$(USER)" "$$PEM_FILE" "$$SSH_FILE" && \
 	./build/manager add-container "$(CONTAINER)" "$(USER)" "$$KEY_FILE"
 
+esp32-register:
+	@if [ -z "$(USER)" ] || [ -z "$(CONTAINER)" ]; then \
+		echo "Usage: make esp32-register USER=<username> CONTAINER=<container_id>"; \
+		echo "This will get the public key from ESP32 and register it with the manager"; \
+		exit 1; \
+	fi
+	@echo "Getting public key from ESP32..."
+	@python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key > keys/esp32_pub.bin 2>/dev/null || true
+	@if [ -f keys/esp32_pub.bin ]; then \
+		echo "Registering with manager..."; \
+		./build/manager add-user "$(USER)" "keys/esp32_pub.bin" "keys/esp32_pub.bin" && \
+		./build/manager add-container "$(CONTAINER)" "$(USER)" "keys/_symmetric.bin"; \
+	else \
+		echo "Failed to get public key from ESP32"; \
+		exit 1; \
+	fi
+
+client-run: FORCE
+	./build/client localhost 5555 bob bob keys/_private.pem
+
+client-run-agent: FORCE
+	./build/client -agent /tmp/esp32-agent.sock localhost 5555 bob bob
+
 FORCE:
 
 manager-run: FORCE
 	sudo DB_PASSWORD=123 ./build/manager serve 2>&1 | tee manager.log
-client-run: FORCE
-	./build/client localhost 5555 bob bob keys/_private.pem

@@ -1,7 +1,123 @@
-# Usage
+# SSH Hardware Security Module (ESP32)
+
+This project uses an ESP32 as a hardware security module (like a YubiKey) for SSH authentication. The ESP32 stores an Ed25519 private key securely and signs authentication challenges over serial.
+
+---
+
+## Quick Start - ESP32 SSH Agent Workflow
+
+### Prerequisites
+- ESP32 board (dev module)
+- USB cable for programming
+- PlatformIO (`pip install platformio`) or Arduino CLI
+
+### Step 1: Upload ESP32 Firmware
+```sh
+# Connect ESP32 via USB, then:
+make esp32-upload
+```
+
+### Step 2: Generate Key on ESP32
+```sh
+# This generates a new Ed25519 key stored in ESP32 flash
+make esp32-keygen
+
+# Or directly:
+python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --generate
+```
+
+### Step 3: Get Public Key (for server registration)
+```sh
+make esp32-get-key
+
+# Or directly:
+python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key
+```
+
+### Step 4: Register User with Manager
+```sh
+# Register the ESP32's public key with the manager
+make esp32-register USER=bob CONTAINER=bob
+```
+
+### Step 5: Start Agent Bridge
+```sh
+# In a separate terminal, start the SSH agent bridge:
+make agent-bridge
+
+# This creates a Unix socket at /tmp/esp32-agent.sock
+```
+
+### Step 6: Connect Using ESP32 Agent
+```sh
+# Connect to the container using the ESP32 for signing
+make client-run-agent
+```
+
+---
+
+## Direct Command Reference
+
+### ESP32 Key Tool
+```sh
+# Generate new key on ESP32
+python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --generate
+
+# Get public key from ESP32 (outputs hex)
+python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key
+
+# Sign a challenge (for testing)
+python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --sign <hex-challenge>
+```
+
+### SSH Agent Bridge
+```sh
+# Start bridge (creates SSH_AUTH_SOCK at /tmp/esp32-agent.sock)
+python3 wrapper/esp32_agent_bridge.py /dev/ttyUSB0
+
+# With custom socket path
+python3 wrapper/esp32_agent_bridge.py /dev/ttyUSB0 -s /tmp/my-agent.sock
+
+# Test agent
+SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh-add -l
+SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh user@host
+```
+
+### Go Client with ESP32 Agent
+```sh
+# Build client
+make client
+
+# Run with ESP32 agent
+./build/client -agent /tmp/esp32-agent.sock localhost 5555 bob bob
+```
+
+---
+
+## Architecture
+
+```
+┌─────────────┐    Serial (USB)    ┌─────────────┐
+│   ESP32     │◄──────────────────►│   Bridge    │
+│ (HSM)       │                    │  (Python)   │
+│             │                    │             │
+│ Ed25519 Key │                    │ Unix Socket │
+│ + Signing   │                    │ (ssh-agent) │
+└─────────────┘                    └──────┬──────┘
+                                           │
+                                           ▼
+                                    ┌─────────────┐
+                                    │  SSH Client │
+                                    │   (Go)      │
+                                    └─────────────┘
+```
+
+---
+
+# Original Documentation
+
 ## Build
 **Manager:**
-Build:
 ```sh
 make manager
 ```
@@ -11,7 +127,6 @@ make env
 ./manager
 ```
 **Client:**
-Build:
 ```sh
 make client
 ```
@@ -20,7 +135,7 @@ Usage:
 ./client
 ```
 
-# Overview
+## Overview
 
 ## Core idea: 
 Host runs a single hypervisor/container host. Each worker gets a container stored in encrypted format that is only decrypted when the worker presents their USB token. Admins provision containers and manage keys via an Database. Worker access is via SSH or RDP using keys/certs stored on their USB token (YubiKey or smartcard PIV).
@@ -37,7 +152,7 @@ Docker with per container encryption?
 Store keys in encrypted SQLite database. Password for decrypting database is stored as ENV variable on host.
 
 ### User authentication to the VM:
-I'll start with SSH only, (and possibly RDP support if there’s enough time)
+I'll start with SSH only, (and possibly RDP support if there's enough time)
 
 ### Short-lived access & privileged operations:
 Tokens with userid and privelege id are stored in SQLite databse. When user tries to log in database is decrypted and user token is compared to the one stored in database (by userid), if they match docker will be decrypted using password stored in database and new token will be generated and sent to user.
