@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Preferences.h>
-#include <HardwareSerial.h>
 #include "ed25519.h"
 
 #define SSH_AGENTC_REQUEST_IDENTITIES     11
@@ -15,10 +14,9 @@
 #define PROTOCOL_SIGN_CHALLENGE            0x01
 #define PROTOCOL_GET_PUBLIC_KEY             0x02
 
-#define LED_PIN 2
+#define LED_PIN 8
 
 Preferences prefs;
-HardwareSerial SerialAgent(1);
 
 uint8_t privateKey[32];
 uint8_t publicKey[32];
@@ -57,12 +55,12 @@ bool signData(const uint8_t* message, size_t msgLen, uint8_t* signature) {
 }
 
 void sendResponse(uint8_t* data, size_t len) {
-    SerialAgent.write((uint8_t)(len >> 24) & 0xFF);
-    SerialAgent.write((uint8_t)(len >> 16) & 0xFF);
-    SerialAgent.write((uint8_t)(len >> 8) & 0xFF);
-    SerialAgent.write((uint8_t)len & 0xFF);
-    SerialAgent.write(data, len);
-    SerialAgent.flush();
+    Serial.write((uint8_t)(len >> 24) & 0xFF);
+    Serial.write((uint8_t)(len >> 16) & 0xFF);
+    Serial.write((uint8_t)(len >> 8) & 0xFF);
+    Serial.write((uint8_t)len & 0xFF);
+    Serial.write(data, len);
+    Serial.flush();
 }
 
 bool readPacket(uint8_t* type, uint8_t* data, size_t* len, uint32_t timeout) {
@@ -71,8 +69,8 @@ bool readPacket(uint8_t* type, uint8_t* data, size_t* len, uint32_t timeout) {
     uint32_t start = millis();
     
     while (pos < 4) {
-        if (SerialAgent.available()) {
-            header[pos++] = SerialAgent.read();
+        if (Serial.available()) {
+            header[pos++] = Serial.read();
         } else {
             if (millis() - start > timeout) return false;
             delay(1);
@@ -86,8 +84,8 @@ bool readPacket(uint8_t* type, uint8_t* data, size_t* len, uint32_t timeout) {
     
     pos = 0;
     while (pos < *len) {
-        if (SerialAgent.available()) {
-            data[pos++] = SerialAgent.read();
+        if (Serial.available()) {
+            data[pos++] = Serial.read();
         } else {
             if (millis() - start > timeout) return false;
             delay(1);
@@ -255,7 +253,6 @@ void setup() {
     digitalWrite(LED_PIN, LOW);
     
     Serial.begin(115200);
-    SerialAgent.begin(115200, SERIAL_8N1, 16, 17);
 
     delay(1000);
     Serial.println("ESP32 SSH Agent starting...");
@@ -278,7 +275,7 @@ void setup() {
 }
 
 void loop() {
-    if (SerialAgent.available() > 0) {
+    if (Serial.available() > 0) {
         digitalWrite(LED_PIN, LOW);
         processAgentRequest();
         digitalWrite(LED_PIN, HIGH);
