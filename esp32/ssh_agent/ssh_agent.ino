@@ -3,7 +3,6 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/sha512.h>
-#include <mbedtls/entropy_poll.h>
 #include <Preferences.h>
 #include <HardwareSerial.h>
 
