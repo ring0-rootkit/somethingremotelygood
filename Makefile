@@ -36,8 +36,8 @@ esp32-upload: FORCE
 	@if command -v pio >/dev/null 2>&1; then \
 		cd esp32/ssh_agent && pio run --target upload; \
 	elif command -v arduino-cli >/dev/null 2>&1; then \
-		arduino-cli compile -b esp32:esp32:esp32dev esp32/ssh_agent/ && \
-		arduino-cli upload -b esp32:esp32:esp32dev -p /dev/ttyUSB0 esp32/ssh_agent/; \
+		arduino-cli compile -b esp32:esp32:mhetesp32devkit esp32/ssh_agent/ && \
+		arduino-cli upload -b esp32:esp32:mhetesp32devkit -p /dev/ttyUSB0 esp32/ssh_agent/; \
 	else \
 		echo "PlatformIO or Arduino CLI not found. Please install one of them."; \
 		exit 1; \
