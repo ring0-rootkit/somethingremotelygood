@@ -81,7 +81,8 @@ def get_public_key(port, baudrate=115200):
     try:
         ser = serial.Serial(port, baudrate, timeout=5.0)
         time.sleep(2)
-        
+        ser.reset_input_buffer()
+
         send_packet(ser, PROTOCOL_GET_PUBLIC_KEY, b"")
         
         msg_type, data = read_packet(ser)
@@ -111,8 +112,9 @@ def sign_challenge(port, challenge_hex, baudrate=115200):
         
     try:
         ser = serial.Serial(port, baudrate, timeout=30.0)
-        time.sleep(0.5)
-        
+        time.sleep(2)
+        ser.reset_input_buffer()
+
         send_packet(ser, PROTOCOL_SIGN_CHALLENGE, challenge)
         
         msg_type, data = read_packet(ser, timeout=30.0)
