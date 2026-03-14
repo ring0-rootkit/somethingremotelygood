@@ -33,13 +33,13 @@ esp32-keygen: FORCE
 
 esp32-upload: FORCE
 	@echo "Uploading ESP32 SSH Agent..."
-	@if command -v pio >/dev/null 2>&1; then \
-		cd esp32/ssh_agent && pio run --target upload; \
-	elif command -v arduino-cli >/dev/null 2>&1; then \
+	@if command -v arduino-cli >/dev/null 2>&1; then \
 		arduino-cli compile -b esp32:esp32:esp32c3 esp32/ssh_agent/ && \
 		arduino-cli upload -b esp32:esp32:esp32c3 -p /dev/ttyACM0 esp32/ssh_agent/; \
+	elif command -v pio >/dev/null 2>&1; then \
+		cd esp32/ssh_agent && pio run --target upload; \
 	else \
-		echo "PlatformIO or Arduino CLI not found. Please install one of them."; \
+		echo "Arduino CLI or PlatformIO not found. Please install one of them."; \
 		exit 1; \
 	fi
 
