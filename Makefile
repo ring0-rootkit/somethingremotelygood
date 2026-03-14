@@ -29,7 +29,7 @@ keygen: FORCE
 	ssh-keygen -f keys/_public.pem -i -m PKCS8 > keys/_public_openssh.pub
 
 esp32-keygen: FORCE
-	python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --generate
+	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --generate
 
 esp32-upload: FORCE
 	@echo "Uploading ESP32 SSH Agent..."
@@ -37,7 +37,7 @@ esp32-upload: FORCE
 		cd esp32/ssh_agent && pio run --target upload; \
 	elif command -v arduino-cli >/dev/null 2>&1; then \
 		arduino-cli compile -b esp32:esp32:mhetesp32devkit esp32/ssh_agent/ && \
-		arduino-cli upload -b esp32:esp32:mhetesp32devkit -p /dev/ttyUSB0 esp32/ssh_agent/; \
+		arduino-cli upload -b esp32:esp32:mhetesp32devkit -p /dev/ttyACM0 esp32/ssh_agent/; \
 	else \
 		echo "PlatformIO or Arduino CLI not found. Please install one of them."; \
 		exit 1; \
@@ -47,13 +47,13 @@ esp32-monitor: FORCE
 	@if command -v pio >/dev/null 2>&1; then \
 		cd esp32/ssh_agent && pio device monitor; \
 	elif command -v screen >/dev/null 2>&1; then \
-		screen /dev/ttyUSB0 115200; \
+		screen /dev/ttyACM0 115200; \
 	else \
 		echo "Cannot monitor. Install platformio or screen."; \
 	fi
 
 esp32-get-key: FORCE
-	python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key
+	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --get-key
 
 esp32-sign: FORCE
 	@if [ -z "$(CHALLENGE)" ]; then \
@@ -61,12 +61,12 @@ esp32-sign: FORCE
 		echo "Example: make esp32-sign CHALLENGE=0102030405060708090a0b0c0d0e0f10"; \
 		exit 1; \
 	fi
-	python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --sign "$(CHALLENGE)"
+	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --sign "$(CHALLENGE)"
 
 agent-bridge: FORCE
 	@echo "Starting ESP32 SSH Agent Bridge..."
 	@echo "Run in another terminal, then use: SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh ..."
-	python3 wrapper/esp32_agent_bridge.py /dev/ttyUSB0
+	python3 wrapper/esp32_agent_bridge.py /dev/ttyACM0
 
 agent-test: FORCE
 	SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh-add -l
@@ -109,7 +109,7 @@ esp32-register:
 		exit 1; \
 	fi
 	@echo "Getting public key from ESP32..."
-	@python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key > keys/esp32_pub.bin 2>/dev/null || true
+	@python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --get-key > keys/esp32_pub.bin 2>/dev/null || true
 	@if [ -f keys/esp32_pub.bin ]; then \
 		echo "Registering with manager..."; \
 		./build/manager add-user "$(USER)" "keys/esp32_pub.bin" "keys/esp32_pub.bin" && \
