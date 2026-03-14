@@ -32,6 +32,7 @@ esp32-keygen: FORCE
 	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --generate
 
 esp32-upload: FORCE
+	esptool erase-flash
 	@echo "Uploading ESP32 SSH Agent..."
 	@if command -v arduino-cli >/dev/null 2>&1; then \
 		arduino-cli compile -b esp32:esp32:esp32c3 esp32/ssh_agent/ && \
