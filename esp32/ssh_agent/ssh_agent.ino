@@ -1,10 +1,7 @@
 #include <Arduino.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/pk.h>
-#include <mbedtls/sha512.h>
 #include <Preferences.h>
 #include <HardwareSerial.h>
+#include "ed25519.h"
 
 #define SSH_AGENTC_REQUEST_IDENTITIES     11
 #define SSH_AGENTC_SIGN_REQUEST            13
@@ -28,48 +25,7 @@ uint8_t publicKey[32];
 bool keyLoaded = false;
 
 bool generateEd25519Key() {
-    mbedtls_entropy_context entropy;
-    mbedtls_ctr_drbg_context ctrDrbg;
-    mbedtls_pk_context pkCtx;
-    
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctrDrbg);
-    mbedtls_pk_init(&pkCtx);
-
-    int ret = mbedtls_ctr_drbg_seed(&ctrDrbg, mbedtls_entropy_func, &entropy, NULL, 0);
-    if (ret != 0) {
-        Serial.println("Failed to seed RNG");
-        goto cleanup;
-    }
-
-    ret = mbedtls_pk_setup(&pkCtx, mbedtls_pk_info_from_type(MBEDTLS_PK_ED25519));
-    if (ret != 0) {
-        Serial.println("Failed to setup PK context");
-        goto cleanup;
-    }
-
-    ret = mbedtls_pk_genkey(&pkCtx, MBEDTLS_PK_ED25519, mbedtls_ctr_drbg_random, &ctrDrbg);
-    if (ret != 0) {
-        Serial.println("Failed to generate Ed25519 key");
-        goto cleanup;
-    }
-
-    uint8_t pubBuf[32];
-    uint8_t privBuf[64];
-
-    ret = mbedtls_pk_write_pubkey_der(&pkCtx, pubBuf, sizeof(pubBuf));
-    if (ret <= 0) {
-        Serial.println("Failed to export public key");
-        goto cleanup;
-    }
-    memcpy(publicKey, pubBuf + ret - 32, 32);
-
-    ret = mbedtls_pk_write_key_der(&pkCtx, privBuf, sizeof(privBuf));
-    if (ret <= 0) {
-        Serial.println("Failed to export private key");
-        goto cleanup;
-    }
-    memcpy(privateKey, privBuf + ret - 64 + 32, 32);
+    ed25519_keypair(publicKey, privateKey);
 
     prefs.begin("ssh-agent", false);
     prefs.putBytes("pubkey", publicKey, 32);
@@ -78,14 +34,7 @@ bool generateEd25519Key() {
 
     keyLoaded = true;
     Serial.println("Ed25519 key generated and stored");
-    ret = 0;
-
-cleanup:
-    mbedtls_pk_free(&pkCtx);
-    mbedtls_ctr_drbg_free(&ctrDrbg);
-    mbedtls_entropy_free(&entropy);
-    
-    return ret == 0;
+    return true;
 }
 
 bool loadKeyFromStorage() {
@@ -103,25 +52,8 @@ bool loadKeyFromStorage() {
 }
 
 bool signData(const uint8_t* message, size_t msgLen, uint8_t* signature) {
-    mbedtls_entropy_context entropy;
-    mbedtls_ctr_drbg_context ctrDrbg;
-    
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctrDrbg);
-
-    int ret = mbedtls_ctr_drbg_seed(&ctrDrbg, mbedtls_entropy_func, &entropy, NULL, 0);
-    if (ret != 0) goto cleanup;
-
-    ret = mbedtls_ed25519_sign(privateKey, message, msgLen, signature);
-    if (ret != 0) goto cleanup;
-
-    ret = 0;
-
-cleanup:
-    mbedtls_ctr_drbg_free(&ctrDrbg);
-    mbedtls_entropy_free(&entropy);
-    
-    return ret == 0;
+    ed25519_sign(signature, message, msgLen, privateKey, publicKey);
+    return true;
 }
 
 void sendResponse(uint8_t* data, size_t len) {
