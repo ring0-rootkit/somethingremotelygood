@@ -230,6 +230,48 @@ int lxd_get_ssh_port(const char *container_id) {
     return atoi(p + 1);
 }
 
+int lxd_setup_network(const char *container_id) {
+    char cmd[512];
+    char gateway[64] = "";
+    int gw_a = 0, gw_b = 0, gw_c = 0, gw_d = 0;
+
+    /* get lxdbr0 gateway IP from LXD config */
+    FILE *f = popen("lxc network get lxdbr0 ipv4.address 2>/dev/null", "r");
+    if (f) {
+        char buf[64];
+        if (fgets(buf, sizeof(buf), f)) {
+            /* format: "10.162.242.1/24" */
+            sscanf(buf, "%d.%d.%d.%d", &gw_a, &gw_b, &gw_c, &gw_d);
+            snprintf(gateway, sizeof(gateway), "%d.%d.%d.%d", gw_a, gw_b, gw_c, gw_d);
+        }
+        pclose(f);
+    }
+
+    if (!gateway[0]) {
+        fprintf(stderr, "[ERR] Could not determine lxdbr0 gateway\n");
+        return -1;
+    }
+
+    /* derive a container IP: hash the name to get last octet (2-254) */
+    unsigned int hash = 0;
+    for (const char *p = container_id; *p; p++)
+        hash = hash * 31 + (unsigned char)*p;
+    int host = (hash % 253) + 2;
+
+    printf("[INFO] Configuring static IP %d.%d.%d.%d for %s (gw %s)\n",
+           gw_a, gw_b, gw_c, host, container_id, gateway);
+
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- sh -c '"
+        "ip addr add %d.%d.%d.%d/24 dev eth0 2>/dev/null; "
+        "ip route add default via %s 2>/dev/null; "
+        "echo \"nameserver 8.8.8.8\" > /etc/resolv.conf"
+        "'",
+        container_id, gw_a, gw_b, gw_c, host, gateway);
+
+    return run_cmd_shell(cmd);
+}
+
 int lxd_is_running(const char *container_id) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "lxc list %s --format csv -c s 2>/dev/null", container_id);

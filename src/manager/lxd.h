@@ -11,5 +11,6 @@ int lxd_fix_ssh_permissions(const char *container_id, const char *userid);
 int lxd_ensure_sshd_running(const char *container_id);
 int lxd_get_ssh_port(const char *container_id);
 int lxd_is_running(const char *container_id);
+int lxd_setup_network(const char *container_id);
 
 #endif

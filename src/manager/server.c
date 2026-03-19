@@ -139,6 +139,10 @@ void handle_client(int client_fd) {
 
     sleep(2);
 
+    if (lxd_setup_network(containerid) != 0) {
+        fprintf(stderr, "[WARN] Network setup failed for %s, packages may not install\n", containerid);
+    }
+
     if (lxd_create_user_and_setup(containerid, userid) != 0) {
         write(client_fd, "ERR USER_SETUP", 14);
         return;
