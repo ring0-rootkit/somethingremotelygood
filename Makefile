@@ -97,8 +97,8 @@ register-user:
 	@PEM_FILE="$${PEM:-keys/_public.pem}"; \
 	SSH_FILE="$${SSH:-keys/_public_openssh.pub}"; \
 	KEY_FILE="$${KEY:-keys/_symmetric.bin}"; \
-	./build/manager add-user "$(USER)" "$$PEM_FILE" "$$SSH_FILE" && \
-	./build/manager add-container "$(CONTAINER)" "$(USER)" "$$KEY_FILE"
+	sudo DB_PASSWORD=123 ./build/manager add-user "$(USER)" "$$PEM_FILE" "$$SSH_FILE" && \
+	sudo DB_PASSWORD=123 ./build/manager add-container "$(CONTAINER)" "$(USER)" "$$KEY_FILE"
 
 esp32-register:
 	@if [ -z "$(USER)" ] || [ -z "$(CONTAINER)" ]; then \
@@ -111,8 +111,8 @@ esp32-register:
 		(echo "Failed to get key from ESP32. Is the bridge running? Stop it first."; exit 1)
 	@if [ -s keys/esp32_pub.bin ]; then \
 		echo "Registering with manager..."; \
-		./build/manager add-user "$(USER)" "keys/esp32_pub.bin" "keys/esp32_pub.bin" && \
-		./build/manager add-container "$(CONTAINER)" "$(USER)" "keys/_symmetric.bin"; \
+		sudo DB_PASSWORD=123 ./build/manager add-user "$(USER)" "keys/esp32_pub.bin" "keys/esp32_pub.bin" && \
+		sudo DB_PASSWORD=123 ./build/manager add-container "$(CONTAINER)" "$(USER)" "keys/_symmetric.bin"; \
 	else \
 		echo "Failed to get public key from ESP32"; \
 		exit 1; \
