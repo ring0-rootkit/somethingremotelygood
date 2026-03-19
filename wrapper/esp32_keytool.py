@@ -32,22 +32,23 @@ def send_packet(ser, msg_type, data):
 
 def read_packet(ser, timeout=10.0):
     ser.timeout = timeout
-    
+
     header = ser.read(4)
     if len(header) < 4:
         return None, None
-        
-    msg_type = header[0]
-    length = struct.unpack(">I", b'\x00' + header[1:4])[0]
-    
-    if length > 4096:
+
+    length = struct.unpack(">I", header)[0]
+
+    if length < 1 or length > 4096:
         return None, None
-        
+
     data = ser.read(length)
     if len(data) < length:
         return None, None
-        
-    return msg_type, data
+
+    msg_type = data[0]
+    payload = data[1:]
+    return msg_type, payload
 
 
 def generate_key(port, baudrate=115200):

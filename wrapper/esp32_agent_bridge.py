@@ -6,7 +6,7 @@ Bridges SSH Agent protocol to ESP32 over serial (USB-to-UART).
 Works as a drop-in replacement for ssh-agent, usable with SSH_AUTH_SOCK.
 
 Usage:
-    python esp32_agent_bridge.py /dev/ttyUSB0
+    python esp32_agent_bridge.py /dev/ttyACM0
     SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh user@host
 """
 
@@ -19,8 +19,6 @@ import serial
 import time
 import signal
 import argparse
-import base64
-import hashlib
 from typing import Optional, Tuple
 
 SSH_AGENTC_REQUEST_IDENTITIES = 11
@@ -28,17 +26,11 @@ SSH_AGENTC_SIGN_REQUEST = 13
 SSH_AGENTC_ADD_IDENTITY = 17
 SSH_AGENTC_REMOVE_IDENTITY = 18
 SSH_AGENTC_REMOVE_ALL_IDENTITIES = 19
-SSH_AGENTC_ADD_ID_CONSTRAINED = 25
-SSH_AGENTC_EXTENSION = 27
 
 SSH_AGENT_FAILURE = 5
 SSH_AGENT_SUCCESS = 6
 SSH_AGENT_IDENTITIES_ANSWER = 12
 SSH_AGENT_SIGN_RESPONSE = 14
-SSH_AGENT_EXTENSION = 27
-
-SSH_AGENT_RSA_SHA2_256 = 2
-SSH_AGENT_RSA_SHA2_512 = 4
 
 
 class ESP32AgentBridge:
@@ -47,11 +39,10 @@ class ESP32AgentBridge:
         self.socket_path = socket_path
         self.baudrate = baudrate
         self.serial: Optional[serial.Serial] = None
+        self.serial_lock = threading.Lock()
         self.running = True
-        self.client_sockets = []
-        
+
     def connect_serial(self) -> bool:
-        """Connect to ESP32 over serial"""
         try:
             self.serial = serial.Serial(
                 port=self.serial_port,
@@ -62,122 +53,204 @@ class ESP32AgentBridge:
                 timeout=5.0
             )
             time.sleep(2)
+            # drain any boot messages from ESP32
+            self.serial.reset_input_buffer()
             print(f"[*] Connected to ESP32 on {self.serial_port}")
             return True
         except Exception as e:
             print(f"[!] Failed to connect to serial: {e}")
             return False
 
-    def read_packet(self, timeout: float = 10.0) -> Optional[Tuple[int, bytes]]:
-        """Read a packet from ESP32"""
+    def _serial_read_exact(self, n: int, timeout: float = 10.0) -> Optional[bytes]:
+        """Read exactly n bytes from serial with timeout"""
         if not self.serial:
             return None
-            
-        try:
-            self.serial.timeout = timeout
-            
-            header = self.serial.read(4)
-            if len(header) < 4:
-                return None
-                
-            msg_type = header[0]
-            length = struct.unpack(">I", header[1:4] + b'\x00')[0] >> 8
-            
-            if length > 4096:
-                return None
-                
-            data = self.serial.read(length)
-            if len(data) < length:
-                return None
-                
-            return (msg_type, data)
-            
-        except Exception as e:
-            print(f"[!] Error reading packet: {e}")
+        old_timeout = self.serial.timeout
+        self.serial.timeout = timeout
+        data = self.serial.read(n)
+        self.serial.timeout = old_timeout
+        if len(data) < n:
             return None
+        return data
 
-    def send_packet(self, msg_type: int, data: bytes) -> bool:
-        """Send a packet to ESP32"""
+    def send_to_esp32(self, msg_type: int, data: bytes) -> bool:
+        """Send packet to ESP32: [type][3-byte-len][data]"""
         if not self.serial:
             return False
-            
         try:
             length = len(data)
-            header = bytes([msg_type]) + struct.pack(">I", length)[1:4]
+            header = bytes([msg_type, (length >> 16) & 0xFF, (length >> 8) & 0xFF, length & 0xFF])
             self.serial.write(header + data)
             self.serial.flush()
             return True
         except Exception as e:
-            print(f"[!] Error sending packet: {e}")
+            print(f"[!] Error sending to ESP32: {e}")
             return False
 
+    def recv_from_esp32(self, timeout: float = 10.0) -> Optional[Tuple[int, bytes]]:
+        """Read packet from ESP32: [4-byte-len][type+payload]"""
+        try:
+            header = self._serial_read_exact(4, timeout)
+            if not header:
+                return None
+
+            length = struct.unpack(">I", header)[0]
+            if length < 1 or length > 4096:
+                print(f"[!] Bad packet length from ESP32: {length}")
+                return None
+
+            data = self._serial_read_exact(length, timeout)
+            if not data:
+                return None
+
+            msg_type = data[0]
+            payload = data[1:]
+            return (msg_type, payload)
+
+        except Exception as e:
+            print(f"[!] Error reading from ESP32: {e}")
+            return None
+
+    def _ssh_string(self, data: bytes) -> bytes:
+        """Encode bytes as SSH string (4-byte length prefix + data)"""
+        return struct.pack(">I", len(data)) + data
+
+    def _build_ed25519_key_blob(self, raw_pubkey: bytes) -> bytes:
+        """Build SSH wire format key blob from raw 32-byte ed25519 public key"""
+        return self._ssh_string(b"ssh-ed25519") + self._ssh_string(raw_pubkey)
+
+    def _extract_raw_key(self, ssh_key_blob: bytes) -> bytes:
+        """Extract raw ed25519 public key from SSH wire format key blob"""
+        offset = 0
+        type_len = struct.unpack(">I", ssh_key_blob[offset:offset + 4])[0]
+        offset += 4 + type_len  # skip type string
+        key_len = struct.unpack(">I", ssh_key_blob[offset:offset + 4])[0]
+        offset += 4
+        return ssh_key_blob[offset:offset + key_len]
+
+    def _build_ed25519_sig_blob(self, raw_sig: bytes) -> bytes:
+        """Build SSH wire format signature blob from raw 64-byte ed25519 signature"""
+        return self._ssh_string(b"ssh-ed25519") + self._ssh_string(raw_sig)
+
     def request_identities(self) -> bytes:
-        """Request identities from ESP32"""
-        if not self.send_packet(SSH_AGENTC_REQUEST_IDENTITIES, b""):
-            return self._create_failure()
-            
-        result = self.read_packet()
+        """Request identities from ESP32 and format as SSH agent response"""
+        with self.serial_lock:
+            if not self.send_to_esp32(SSH_AGENTC_REQUEST_IDENTITIES, b""):
+                return self._create_failure()
+
+            result = self.recv_from_esp32()
+
         if not result:
+            print("[!] No response from ESP32 for identity request")
             return self._create_failure()
-            
-        return bytes([SSH_AGENT_IDENTITIES_ANSWER]) + result[1]
-        
+
+        msg_type, payload = result
+        if msg_type != SSH_AGENT_IDENTITIES_ANSWER:
+            print(f"[!] Unexpected response type: {msg_type}")
+            return self._create_failure()
+
+        # ESP32 sends: [nkeys(4)][key_blob_len(4)][raw_key(32)][comment_len(4)]
+        if len(payload) < 8:
+            return self._create_failure()
+
+        nkeys = struct.unpack(">I", payload[0:4])[0]
+        if nkeys == 0:
+            # no keys, just forward
+            resp = bytes([SSH_AGENT_IDENTITIES_ANSWER])
+            resp += struct.pack(">I", 0)
+            return resp
+
+        # parse raw key from ESP32's response
+        raw_key_len = struct.unpack(">I", payload[4:8])[0]
+        raw_key = payload[8:8 + raw_key_len]
+
+        # build proper SSH wire format key blob
+        key_blob = self._build_ed25519_key_blob(raw_key)
+        comment = b"ESP32-SSH-Agent"
+
+        resp = bytes([SSH_AGENT_IDENTITIES_ANSWER])
+        resp += struct.pack(">I", 1)  # nkeys
+        resp += self._ssh_string(key_blob)
+        resp += self._ssh_string(comment)
+        return resp
+
     def sign_request(self, key_blob: bytes, data: bytes, flags: int) -> bytes:
-        """Send sign request to ESP32"""
-        payload = struct.pack(">I", len(key_blob)) + key_blob + struct.pack(">I", len(data)) + data + bytes([flags])
-        
-        if not self.send_packet(SSH_AGENTC_SIGN_REQUEST, payload):
-            return self._create_failure()
-            
-        result = self.read_packet(timeout=30.0)
+        """Send sign request to ESP32, return SSH-formatted signature"""
+        # extract raw 32-byte key from SSH wire format key blob
+        raw_key = self._extract_raw_key(key_blob)
+
+        # build payload for ESP32: [key_len(4)][raw_key][data_len(4)][data][flags(1)]
+        payload = self._ssh_string(raw_key) + self._ssh_string(data) + bytes([flags])
+
+        with self.serial_lock:
+            if not self.send_to_esp32(SSH_AGENTC_SIGN_REQUEST, payload):
+                return self._create_failure()
+
+            result = self.recv_from_esp32(timeout=30.0)
+
         if not result:
+            print("[!] No response from ESP32 for sign request")
             return self._create_failure()
-            
-        return bytes([SSH_AGENT_SIGN_RESPONSE]) + struct.pack(">I", len(result[1]))[1:4] + result[1]
+
+        msg_type, payload = result
+        if msg_type != SSH_AGENT_SIGN_RESPONSE:
+            print(f"[!] Sign response type: {msg_type}")
+            return self._create_failure()
+
+        # ESP32 sends: [sig_len(4)][raw_sig(64)]
+        if len(payload) < 4:
+            return self._create_failure()
+
+        raw_sig_len = struct.unpack(">I", payload[0:4])[0]
+        raw_sig = payload[4:4 + raw_sig_len]
+
+        # build SSH wire format signature blob
+        sig_blob = self._build_ed25519_sig_blob(raw_sig)
+
+        resp = bytes([SSH_AGENT_SIGN_RESPONSE])
+        resp += self._ssh_string(sig_blob)
+        return resp
 
     def _create_failure(self) -> bytes:
-        """Create failure response"""
         return bytes([SSH_AGENT_FAILURE])
-    
+
     def _create_success(self) -> bytes:
-        """Create success response"""
         return bytes([SSH_AGENT_SUCCESS])
 
     def handle_agent_request(self, data: bytes) -> bytes:
-        """Handle incoming SSH agent request"""
+        """Handle incoming SSH agent request from client"""
         if len(data) < 1:
             return self._create_failure()
-            
+
         msg_type = data[0]
         payload = data[1:]
-        
+
         if msg_type == SSH_AGENTC_REQUEST_IDENTITIES:
             return self.request_identities()
-            
+
         elif msg_type == SSH_AGENTC_SIGN_REQUEST:
-            if len(payload) < 36:
+            if len(payload) < 8:
                 return self._create_failure()
-                
+
             key_len = struct.unpack(">I", payload[0:4])[0]
-            if len(payload) < 4 + key_len + 4 + 1:
+            if len(payload) < 4 + key_len + 4:
                 return self._create_failure()
-                
-            key_blob = payload[4:4+key_len]
-            data_len = struct.unpack(">I", payload[4+key_len:8+key_len])[0]
-            sign_data = payload[8+key_len:8+key_len+data_len]
-            flags = payload[8+key_len+data_len]
-            
+
+            key_blob = payload[4:4 + key_len]
+            data_offset = 4 + key_len
+            data_len = struct.unpack(">I", payload[data_offset:data_offset + 4])[0]
+            sign_data = payload[data_offset + 4:data_offset + 4 + data_len]
+
+            flags_offset = data_offset + 4 + data_len
+            flags = 0
+            if flags_offset + 4 <= len(payload):
+                flags = struct.unpack(">I", payload[flags_offset:flags_offset + 4])[0]
+
             return self.sign_request(key_blob, sign_data, flags)
-            
-        elif msg_type == SSH_AGENTC_ADD_IDENTITY:
+
+        elif msg_type in (SSH_AGENTC_ADD_IDENTITY, SSH_AGENTC_REMOVE_IDENTITY, SSH_AGENTC_REMOVE_ALL_IDENTITIES):
             return self._create_success()
-            
-        elif msg_type == SSH_AGENTC_REMOVE_IDENTITY:
-            return self._create_success()
-            
-        elif msg_type == SSH_AGENTC_REMOVE_ALL_IDENTITIES:
-            return self._create_success()
-            
+
         else:
             print(f"[*] Unknown message type: {msg_type}")
             return self._create_failure()
@@ -190,29 +263,28 @@ class ESP32AgentBridge:
                     length_data = client_sock.recv(4)
                     if len(length_data) < 4:
                         break
-                        
+
                     length = struct.unpack(">I", length_data)[0]
                     if length > 65536:
                         break
-                        
+
                     data = b""
                     while len(data) < length:
                         chunk = client_sock.recv(length - len(data))
                         if not chunk:
                             break
                         data += chunk
-                    
+
+                    if len(data) < length:
+                        break
+
                     response = self.handle_agent_request(data)
-                    
                     client_sock.send(struct.pack(">I", len(response)) + response)
-                    
+
                 except socket.timeout:
                     continue
-                except Exception as e:
+                except Exception:
                     break
-                    
-        except Exception as e:
-            print(f"[!] Client handler error: {e}")
         finally:
             client_sock.close()
 
@@ -220,16 +292,16 @@ class ESP32AgentBridge:
         """Start Unix socket server for SSH agent"""
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
-            
+
         server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(self.socket_path)
         server.listen(5)
         server.settimeout(1.0)
-        
+
         os.chmod(self.socket_path, 0o600)
         print(f"[*] SSH Agent socket listening on {self.socket_path}")
-        
+
         while self.running:
             try:
                 client_sock, _ = server.accept()
@@ -240,27 +312,25 @@ class ESP32AgentBridge:
             except Exception as e:
                 if self.running:
                     print(f"[!] Server error: {e}")
-                    
+
         server.close()
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
 
     def run(self):
-        """Run the bridge"""
         print(f"[*] ESP32 SSH Agent Bridge")
         print(f"[*] Serial: {self.serial_port} @ {self.baudrate} baud")
         print(f"[*] Socket: {self.socket_path}")
-        
+
         if not self.connect_serial():
             sys.exit(1)
-            
+
         signal.signal(signal.SIGINT, lambda s, f: self.shutdown())
         signal.signal(signal.SIGTERM, lambda s, f: self.shutdown())
-        
+
         self.start_unix_server()
-        
+
     def shutdown(self):
-        """Shutdown the bridge"""
         print("\n[*] Shutting down...")
         self.running = False
         if self.serial:
@@ -270,43 +340,14 @@ class ESP32AgentBridge:
         sys.exit(0)
 
 
-def get_public_key(serial_port: str, baudrate: int = 115200) -> Optional[str]:
-    """Get public key from ESP32"""
-    try:
-        ser = serial.Serial(serial_port, baudrate, timeout=2.0)
-        time.sleep(2)
-        
-        timeout = time.time() + 5
-        while time.time() < timeout:
-            line = ser.readline().decode('utf-8', errors='ignore').strip()
-            if 'ssh-ed25519' in line or len(line) == 64:
-                ser.close()
-                return line
-                
-        ser.close()
-    except Exception as e:
-        print(f"[!] Error getting public key: {e}")
-    return None
-
-
 def main():
     parser = argparse.ArgumentParser(description="ESP32 SSH Agent Bridge")
-    parser.add_argument("serial_port", help="Serial port (e.g., /dev/ttyUSB0)")
+    parser.add_argument("serial_port", help="Serial port (e.g., /dev/ttyACM0)")
     parser.add_argument("-s", "--socket", default="/tmp/esp32-agent.sock", help="Unix socket path")
     parser.add_argument("-b", "--baudrate", type=int, default=115200, help="Baud rate")
-    parser.add_argument("-g", "--get-key", action="store_true", help="Just get public key and exit")
-    
+
     args = parser.parse_args()
-    
-    if args.get_key:
-        key = get_public_key(args.serial_port, args.baudrate)
-        if key:
-            print(f"Public key: {key}")
-            sys.exit(0)
-        else:
-            print("Failed to get public key")
-            sys.exit(1)
-            
+
     bridge = ESP32AgentBridge(args.serial_port, args.socket, args.baudrate)
     bridge.run()
 
