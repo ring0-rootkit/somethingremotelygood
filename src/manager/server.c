@@ -2,7 +2,7 @@
 #include "config.h"
 #include "database.h"
 #include "crypto.h"
-#include "docker.h"
+#include "lxd.h"
 #include "volume.h"
 #include <stdio.h>
 #include <string.h>
@@ -118,42 +118,42 @@ void handle_client(int client_fd) {
     }
     printf("[INFO] Encrypted home mounted at %s\n", mount_point);
 
-    if (docker_setup_ssh_in_volume(mount_point, userid, pubkey_ssh) != 0) {
+    if (lxd_setup_ssh_in_volume(mount_point, userid, pubkey_ssh) != 0) {
         write(client_fd, "ERR SSH_SETUP", 13);
         volume_close_encrypted_home(containerid);
         return;
     }
 
-    if (docker_start_container(containerid) != 0) {
+    if (lxd_start_container(containerid) != 0) {
         printf("[INFO] Container %s not found, creating...\n", containerid);
-        int res = docker_create_basic_container(containerid, "ubuntu:22.04", userid, mount_point);
+        int res = lxd_create_container(containerid, LXD_IMAGE, userid, mount_point);
         if (res != 0) {
             printf("[INFO] Container %s setup returned error, %d\n", containerid, res);
             volume_close_encrypted_home(containerid);
             return;
         }
-        docker_start_container(containerid);
+        lxd_start_container(containerid);
     }
 
-    printf("sshd is running\n");
+    sleep(2);
 
-    if (docker_create_user_and_inject_ssh(containerid, userid, pubkey_pem, pubkey_ssh) != 0) {
-        write(client_fd, "ERR INJECT_SSH", 13);
+    if (lxd_create_user_and_setup(containerid, userid) != 0) {
+        write(client_fd, "ERR USER_SETUP", 14);
         return;
     }
 
-    if (docker_fix_ssh_permissions(containerid, userid) != 0) {
+    if (lxd_fix_ssh_permissions(containerid, userid) != 0) {
         fprintf(stderr, "[WARN] Could not fix SSH permissions, SSH may fail\n");
     }
 
-    if (docker_ensure_sshd_running(containerid) != 0) {
+    if (lxd_ensure_sshd_running(containerid) != 0) {
         write(client_fd, "ERR SSHD_FAIL", 13);
         return;
     }
 
-    printf("ssh injected\n");
+    printf("[INFO] User and SSH configured in %s\n", containerid);
 
-    int ssh_port = docker_get_ssh_port(containerid);
+    int ssh_port = lxd_get_ssh_port(containerid);
     if (ssh_port <= 0) {
         write(client_fd, "ERR SSH_PORT", 12);
         return;
@@ -171,8 +171,10 @@ void handle_client(int client_fd) {
     int ssh_connected = 0;
     int connect_wait = 0;
     while (!ssh_connected && connect_wait < 60) {
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "docker exec %s sh -c 'netstat -tn 2>/dev/null | grep :22 | grep ESTABLISHED | wc -l' 2>/dev/null || echo 0", containerid);
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd),
+            "lxc exec %s -- sh -c 'grep \":0016 \" /proc/net/tcp 2>/dev/null | grep \" 01 \" | wc -l' 2>/dev/null || echo 0",
+            containerid);
         FILE *f = popen(cmd, "r");
         if (f) {
             char buf[16];
@@ -193,7 +195,7 @@ void handle_client(int client_fd) {
 
     if (!ssh_connected) {
         printf("[INFO] No SSH connection to %s within 60s, stopping container\n", containerid);
-        docker_stop_container(containerid);
+        lxd_stop_container(containerid);
         printf("[INFO] Container %s stopped and home encrypted\n", containerid);
         return;
     }
@@ -204,8 +206,10 @@ void handle_client(int client_fd) {
     int check_count = 0;
     int empty_count = 0;
     while (ssh_active && check_count < 1800) {
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "docker exec %s sh -c 'netstat -tn 2>/dev/null | grep :22 | grep ESTABLISHED | wc -l' 2>/dev/null || echo 0", containerid);
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd),
+            "lxc exec %s -- sh -c 'grep \":0016 \" /proc/net/tcp 2>/dev/null | grep \" 01 \" | wc -l' 2>/dev/null || echo 0",
+            containerid);
         FILE *f = popen(cmd, "r");
         if (f) {
             char buf[16];
@@ -233,7 +237,7 @@ void handle_client(int client_fd) {
         printf("[INFO] Timeout reached for %s, stopping container\n", containerid);
     }
 
-    docker_stop_container(containerid);
+    lxd_stop_container(containerid);
     printf("[INFO] Container %s stopped and home encrypted\n", containerid);
 }
 

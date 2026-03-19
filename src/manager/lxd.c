@@ -1,0 +1,237 @@
+#include "lxd.h"
+#include "volume.h"
+#include "utils.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+static int find_free_port(void) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return -1;
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = 0;
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(sock);
+        return -1;
+    }
+    socklen_t len = sizeof(addr);
+    getsockname(sock, (struct sockaddr *)&addr, &len);
+    int port = ntohs(addr.sin_port);
+    close(sock);
+    return port;
+}
+
+int lxd_create_container(const char *container_id, const char *image, const char *user_id, const char *home_mount) {
+    char cmd[2048];
+
+    snprintf(cmd, sizeof(cmd), "lxc init %s %s", image, container_id);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to init container %s\n", container_id);
+        return -1;
+    }
+
+    snprintf(cmd, sizeof(cmd), "lxc config set %s security.privileged true", container_id);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to set privileged mode for %s\n", container_id);
+        lxd_remove_container(container_id);
+        return -1;
+    }
+
+    if (home_mount && strlen(home_mount) > 0) {
+        char abs_mount[512];
+        if (realpath(home_mount, abs_mount) == NULL) {
+            strncpy(abs_mount, home_mount, sizeof(abs_mount) - 1);
+            abs_mount[sizeof(abs_mount) - 1] = '\0';
+        }
+        snprintf(cmd, sizeof(cmd),
+            "lxc config device add %s home disk source=%s path=/home/%s",
+            container_id, abs_mount, user_id);
+        if (run_cmd_shell(cmd) != 0) {
+            fprintf(stderr, "[ERR] Failed to add disk device to %s\n", container_id);
+            lxd_remove_container(container_id);
+            return -1;
+        }
+    }
+
+    int port = find_free_port();
+    if (port <= 0) {
+        fprintf(stderr, "[ERR] Failed to find free port for SSH proxy\n");
+        lxd_remove_container(container_id);
+        return -1;
+    }
+
+    snprintf(cmd, sizeof(cmd),
+        "lxc config device add %s ssh proxy listen=tcp:0.0.0.0:%d connect=tcp:127.0.0.1:22",
+        container_id, port);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to add SSH proxy device to %s\n", container_id);
+        lxd_remove_container(container_id);
+        return -1;
+    }
+
+    printf("[INFO] Container %s created with SSH proxy on port %d\n", container_id, port);
+    return 0;
+}
+
+int lxd_start_container(const char *container_id) {
+    char *argv[] = {"lxc", "start", (char *)container_id, NULL};
+    return run_cmdv(argv);
+}
+
+int lxd_stop_container(const char *container_id) {
+    char *argv[] = {"lxc", "stop", (char *)container_id, NULL};
+    int r = run_cmdv(argv);
+    volume_close_encrypted_home(container_id);
+    return r;
+}
+
+int lxd_remove_container(const char *container_id) {
+    char *argv[] = {"lxc", "delete", "--force", (char *)container_id, NULL};
+    int r = run_cmdv(argv);
+    volume_close_encrypted_home(container_id);
+    return r;
+}
+
+int lxd_setup_ssh_in_volume(const char *mount_point, const char *userid, const char *pubkey_ssh) {
+    char ssh_dir[512];
+    char auth_keys[512];
+
+    snprintf(ssh_dir, sizeof(ssh_dir), "%s/.ssh", mount_point);
+    snprintf(auth_keys, sizeof(auth_keys), "%s/.ssh/authorized_keys", mount_point);
+
+    struct stat st;
+    int needs_setup = 1;
+    if (stat(auth_keys, &st) == 0 && st.st_size > 0) {
+        needs_setup = 0;
+    }
+
+    if (needs_setup) {
+        if (mkdir(ssh_dir, 0700) != 0 && errno != EEXIST) {
+            fprintf(stderr, "[ERR] Failed to create .ssh dir in volume: %s\n", ssh_dir);
+            return -1;
+        }
+
+        FILE *f = fopen(auth_keys, "w");
+        if (!f) {
+            fprintf(stderr, "[ERR] Failed to create authorized_keys in volume\n");
+            return -1;
+        }
+        if (!pubkey_ssh || strlen(pubkey_ssh) == 0) {
+            fprintf(stderr, "[ERR] Empty SSH public key for user %s\n", userid);
+            fclose(f);
+            unlink(auth_keys);
+            return -1;
+        }
+        fprintf(f, "%s\n", pubkey_ssh);
+        fclose(f);
+
+        chmod(auth_keys, 0600);
+        chmod(ssh_dir, 0700);
+
+        printf("[INFO] SSH keys set up in volume for %s (%zu bytes)\n", userid, strlen(pubkey_ssh));
+    } else {
+        printf("[INFO] SSH already set up in volume for %s\n", userid);
+    }
+
+    return 0;
+}
+
+int lxd_create_user_and_setup(const char *container_id, const char *userid) {
+    char cmd[1024];
+
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- apk add --no-cache bash sudo",
+        container_id);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to install packages in container %s\n", container_id);
+        return -1;
+    }
+
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- sh -c 'id -u %s >/dev/null 2>&1 || adduser -D -s /bin/bash %s'",
+        container_id, userid, userid);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to create user %s in container %s\n", userid, container_id);
+        return -1;
+    }
+
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- sh -c 'echo \"%s ALL=(ALL) NOPASSWD:ALL\" > /etc/sudoers.d/%s && chmod 440 /etc/sudoers.d/%s'",
+        container_id, userid, userid, userid);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[ERR] Failed to add %s to sudoers in container %s\n", userid, container_id);
+        return -1;
+    }
+
+    return 0;
+}
+
+int lxd_fix_ssh_permissions(const char *container_id, const char *userid) {
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- chown -R %s:%s /home/%s",
+        container_id, userid, userid, userid);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[WARN] Failed to fix home permissions for %s in %s\n", userid, container_id);
+        return -1;
+    }
+    printf("[INFO] Fixed home permissions for %s in container %s\n", userid, container_id);
+    return 0;
+}
+
+int lxd_ensure_sshd_running(const char *container_id) {
+    printf("[sshd] Ensuring OpenSSH server is installed and configured inside %s\n", container_id);
+
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- sh -c '"
+        "if pgrep -x sshd >/dev/null 2>&1; then "
+        "  echo \"[sshd] already running\"; exit 0; "
+        "fi; "
+        "apk add --no-cache openssh; "
+        "ssh-keygen -A 2>/dev/null; "
+        "sed -i \"s/^#*PasswordAuthentication.*/PasswordAuthentication no/\" /etc/ssh/sshd_config; "
+        "sed -i \"s/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/\" /etc/ssh/sshd_config; "
+        "mkdir -p /run/sshd; "
+        "/usr/sbin/sshd; "
+        "echo \"[sshd] started\"'"
+        , container_id);
+
+    return run_cmd_shell(cmd);
+}
+
+int lxd_get_ssh_port(const char *container_id) {
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "lxc config device get %s ssh listen 2>/dev/null", container_id);
+    FILE *f = popen(cmd, "r");
+    if (!f) return -1;
+    char buf[128];
+    if (!fgets(buf, sizeof(buf), f)) { pclose(f); return -1; }
+    pclose(f);
+    /* output is "tcp:0.0.0.0:PORT" */
+    char *p = strrchr(buf, ':');
+    if (!p) return -1;
+    return atoi(p + 1);
+}
+
+int lxd_is_running(const char *container_id) {
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "lxc list %s --format csv -c s 2>/dev/null", container_id);
+    FILE *f = popen(cmd, "r");
+    if (!f) return 0;
+    char buf[32];
+    int running = 0;
+    if (fgets(buf, sizeof(buf), f)) {
+        running = (strstr(buf, "RUNNING") != NULL);
+    }
+    pclose(f);
+    return running;
+}

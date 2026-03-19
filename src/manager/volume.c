@@ -275,13 +275,13 @@ void volume_cleanup_all(void) {
 
 static int is_container_running(const char *container_id) {
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "docker inspect -f '{{.State.Running}}' %s 2>/dev/null", container_id);
+    snprintf(cmd, sizeof(cmd), "lxc list %s --format csv -c s 2>/dev/null", container_id);
     FILE *f = popen(cmd, "r");
     if (!f) return 0;
-    char buf[16];
+    char buf[32];
     int running = 0;
     if (fgets(buf, sizeof(buf), f)) {
-        running = (strstr(buf, "true") != NULL);
+        running = (strstr(buf, "RUNNING") != NULL);
     }
     pclose(f);
     return running;

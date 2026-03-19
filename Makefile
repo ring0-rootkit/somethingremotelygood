@@ -1,4 +1,4 @@
-.PHONY: FORCE all clean manager client keygen clean-containers cleanup-luks
+.PHONY: FORCE all clean manager client keygen clean-containers cleanup-luks setup
 
 all: manager client
 
@@ -6,7 +6,7 @@ MANAGER_SRC = src/manager/main.c \
               src/manager/database.c \
               src/manager/crypto.c \
               src/manager/utils.c \
-              src/manager/docker.c \
+              src/manager/lxd.c \
               src/manager/volume.c \
               src/manager/server.c \
               src/manager/cli.c
@@ -73,8 +73,8 @@ clean:
 	rm -f src/manager/*.o build/manager build/client
 
 clean-containers:
-	-docker ps -aq | xargs -r docker stop
-	-docker ps -aq | xargs -r docker rm -f
+	-lxc list --format csv -c n | xargs -r -I{} lxc stop {} --force 2>/dev/null || true
+	-lxc list --format csv -c n | xargs -r -I{} lxc delete {} --force 2>/dev/null || true
 
 cleanup-luks:
 	@echo "Cleaning up stale LUKS devices..."
@@ -124,6 +124,27 @@ client-run-agent: FORCE
 	./build/client -agent /tmp/esp32-agent.sock localhost 5555 bob bob
 
 FORCE:
+
+setup: FORCE
+	@echo "Installing dependencies..."
+	@if command -v pacman >/dev/null 2>&1; then \
+		sudo pacman -S --needed lxd cryptsetup gcc sqlcipher openssl go python; \
+	elif command -v apt >/dev/null 2>&1; then \
+		sudo apt install -y lxd cryptsetup gcc libsqlcipher-dev libssl-dev golang-go python3; \
+	else \
+		echo "Unsupported package manager. Install manually: lxd, cryptsetup, gcc, sqlcipher, openssl, go"; \
+		exit 1; \
+	fi
+	@echo "Enabling LXD service..."
+	sudo systemctl enable --now lxd 2>/dev/null || true
+	@echo "Initializing LXD..."
+	sudo lxd init --auto 2>/dev/null || echo "LXD already initialized"
+	@echo "Adding user to lxd group..."
+	sudo usermod -aG lxd $$(whoami) 2>/dev/null || true
+	@echo "Preloading Alpine image..."
+	lxc image copy images:alpine/3.20 local: --alias alpine 2>/dev/null || true
+	@mkdir -p build keys homes
+	@echo "Setup complete. Log out and back in for group changes to take effect."
 
 manager-run: FORCE
 	sudo DB_PASSWORD=123 ./build/manager serve 2>&1 | tee manager.log

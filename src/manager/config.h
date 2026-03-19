@@ -6,5 +6,6 @@
 #define MAX_CONTAINER_ID 128
 #define CHALLENGE_SIZE 32
 #define CONTAINER_KEY_LEN 32
+#define LXD_IMAGE "images:alpine/3.20"
 
 #endif
