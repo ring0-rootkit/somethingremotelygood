@@ -26,8 +26,6 @@ const (
 	sshAgentIdentitiesAnswer uint8 = 12
 	sshAgentSignResponse     uint8 = 14
 
-	sshAgentCExtension uint8 = 27
-
 	sshAgentRSASHA2256 uint8 = 2
 	sshAgentRSASHA2512 uint8 = 4
 
