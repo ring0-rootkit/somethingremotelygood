@@ -14,6 +14,7 @@ import serial
 import time
 import argparse
 import struct
+import base64
 
 PROTOCOL_SIGN_CHALLENGE = 0x01
 PROTOCOL_GET_PUBLIC_KEY = 0x02
@@ -92,7 +93,10 @@ def get_public_key(port, baudrate=115200):
         
         if msg_type == PROTOCOL_GET_PUBLIC_KEY and data and len(data) >= 32:
             pubkey = data[:32]
-            print("ssh-ed25519 " + pubkey.hex())
+            key_type = b"ssh-ed25519"
+            blob = struct.pack(">I", len(key_type)) + key_type + struct.pack(">I", len(pubkey)) + pubkey
+            ssh_key = "ssh-ed25519 " + base64.b64encode(blob).decode()
+            print(ssh_key)
             return pubkey
         else:
             print(f"[!] Failed to get public key: type={msg_type}, len={len(data) if data else 0}")
