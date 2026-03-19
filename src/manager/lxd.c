@@ -262,14 +262,44 @@ int lxd_setup_network(const char *container_id) {
            gw_a, gw_b, gw_c, host, container_id, gateway);
 
     snprintf(cmd, sizeof(cmd),
-        "lxc exec %s -- sh -c '"
-        "ip addr add %d.%d.%d.%d/24 dev eth0 2>/dev/null; "
-        "ip route add default via %s 2>/dev/null; "
-        "echo \"nameserver 8.8.8.8\" > /etc/resolv.conf"
-        "'",
-        container_id, gw_a, gw_b, gw_c, host, gateway);
+        "lxc exec %s -- ip addr add %d.%d.%d.%d/24 dev eth0",
+        container_id, gw_a, gw_b, gw_c, host);
+    run_cmd_shell(cmd);
 
-    return run_cmd_shell(cmd);
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- ip route add default via %s",
+        container_id, gateway);
+    run_cmd_shell(cmd);
+
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- sh -c 'echo nameserver 8.8.8.8 > /etc/resolv.conf'",
+        container_id);
+    run_cmd_shell(cmd);
+
+    /* ensure iptables forwarding rules for lxdbr0 */
+    run_cmd_shell("iptables-legacy -C FORWARD -i lxdbr0 -j ACCEPT 2>/dev/null || "
+                  "iptables-legacy -I FORWARD -i lxdbr0 -j ACCEPT");
+    run_cmd_shell("iptables-legacy -C FORWARD -o lxdbr0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || "
+                  "iptables-legacy -I FORWARD -o lxdbr0 -m state --state RELATED,ESTABLISHED -j ACCEPT");
+
+    /* ensure NAT masquerade for the bridge subnet */
+    snprintf(cmd, sizeof(cmd),
+        "iptables-legacy -t nat -C POSTROUTING -s %d.%d.%d.0/24 ! -d %d.%d.%d.0/24 -j MASQUERADE 2>/dev/null || "
+        "iptables-legacy -t nat -A POSTROUTING -s %d.%d.%d.0/24 ! -d %d.%d.%d.0/24 -j MASQUERADE",
+        gw_a, gw_b, gw_c, gw_a, gw_b, gw_c,
+        gw_a, gw_b, gw_c, gw_a, gw_b, gw_c);
+    run_cmd_shell(cmd);
+
+    /* verify connectivity */
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- ping -c1 -W2 8.8.8.8 >/dev/null 2>&1",
+        container_id);
+    if (run_cmd_shell(cmd) != 0) {
+        fprintf(stderr, "[WARN] Container %s has no network connectivity\n", container_id);
+        return -1;
+    }
+
+    return 0;
 }
 
 int lxd_is_running(const char *container_id) {

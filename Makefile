@@ -144,6 +144,10 @@ setup: FORCE
 	sudo usermod -aG lxd $$(whoami) 2>/dev/null || true
 	@echo "Preloading Alpine image..."
 	lxc image copy images:alpine/3.20 local: --alias alpine 2>/dev/null || true
+	@echo "Configuring firewall for LXD bridge..."
+	-sudo iptables-legacy -C FORWARD -i lxdbr0 -j ACCEPT 2>/dev/null || sudo iptables-legacy -I FORWARD -i lxdbr0 -j ACCEPT
+	-sudo iptables-legacy -C FORWARD -o lxdbr0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || sudo iptables-legacy -I FORWARD -o lxdbr0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+	-sudo iptables-legacy -t nat -C POSTROUTING -s $$(lxc network get lxdbr0 ipv4.address 2>/dev/null | cut -d/ -f1 | sed 's/\.[0-9]*$$/.0\/24/') ! -d $$(lxc network get lxdbr0 ipv4.address 2>/dev/null | cut -d/ -f1 | sed 's/\.[0-9]*$$/.0\/24/') -j MASQUERADE 2>/dev/null || sudo iptables-legacy -t nat -A POSTROUTING -s $$(lxc network get lxdbr0 ipv4.address 2>/dev/null | cut -d/ -f1 | sed 's/\.[0-9]*$$/.0\/24/') ! -d $$(lxc network get lxdbr0 ipv4.address 2>/dev/null | cut -d/ -f1 | sed 's/\.[0-9]*$$/.0\/24/') -j MASQUERADE
 	@mkdir -p build keys homes
 	@echo "Setup complete. Log out and back in for group changes to take effect."
 
