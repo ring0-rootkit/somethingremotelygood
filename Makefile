@@ -107,8 +107,9 @@ esp32-register:
 		exit 1; \
 	fi
 	@echo "Getting public key from ESP32..."
-	@python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --get-key > keys/esp32_pub.bin 2>/dev/null || true
-	@if [ -f keys/esp32_pub.bin ]; then \
+	@python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --get-key > keys/esp32_pub.bin || \
+		(echo "Failed to get key from ESP32. Is the bridge running? Stop it first."; exit 1)
+	@if [ -s keys/esp32_pub.bin ]; then \
 		echo "Registering with manager..."; \
 		./build/manager add-user "$(USER)" "keys/esp32_pub.bin" "keys/esp32_pub.bin" && \
 		./build/manager add-container "$(CONTAINER)" "$(USER)" "keys/_symmetric.bin"; \
