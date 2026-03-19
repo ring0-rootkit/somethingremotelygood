@@ -160,6 +160,13 @@ int lxd_create_user_and_setup(const char *container_id, const char *userid) {
         return -1;
     }
 
+    /* unlock account - adduser -D leaves it locked, sshd refuses locked accounts */
+    snprintf(cmd, sizeof(cmd),
+        "lxc exec %s -- passwd -u %s 2>/dev/null || "
+        "lxc exec %s -- sh -c 'sed -i \"s/^%s:!:/%s:*:/\" /etc/shadow'",
+        container_id, userid, container_id, userid, userid);
+    run_cmd_shell(cmd);
+
     snprintf(cmd, sizeof(cmd),
         "lxc exec %s -- sh -c 'echo \"%s ALL=(ALL) NOPASSWD:ALL\" > /etc/sudoers.d/%s && chmod 440 /etc/sudoers.d/%s'",
         container_id, userid, userid, userid);
