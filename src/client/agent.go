@@ -2,15 +2,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"os"
-
-	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -205,15 +201,6 @@ func (e *ESP32Agent) GetPublicKey() []byte {
 	return e.publicKey
 }
 
-func (e *ESP32Agent) GetOpenSSHKey() (string, error) {
-	key, _, _, _, err := ssh.ParseAuthorizedKey([]byte("ssh-ed25519 " + base64.StdEncoding.EncodeToString(e.publicKey)))
-	if err != nil {
-		return "", err
-	}
-
-	return key.Type() + " " + base64.StdEncoding.EncodeToString(e.publicKey), nil
-}
-
 func ConnectWithESP32Agent(host, port, userID, containerID, agentSocket string) error {
 	agent, err := NewESP32Agent(agentSocket)
 	if err != nil {
@@ -276,34 +263,11 @@ func ConnectWithESP32Agent(host, port, userID, containerID, agentSocket string) 
 
 	conn.Close()
 
-	sshKey, err := agent.GetOpenSSHKey()
-	if err != nil {
-		return fmt.Errorf("failed to get OpenSSH key: %w", err)
-	}
-
-	tmpKey, err := writeTempSSHKey(sshKey)
-	if err != nil {
-		return fmt.Errorf("failed to write temp key: %w", err)
-	}
-	defer os.Remove(tmpKey)
-
-	startSSH(host, sshPort, userID, tmpKey)
+	startSSHWithAgent(host, sshPort, userID, agentSocket)
 
 	return nil
 }
 
-func writeTempSSHKey(key string) (string, error) {
-	f, err := os.CreateTemp("", "esp32ssh-*.key")
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	f.WriteString(key + "\n")
-	f.Chmod(0600)
-
-	return f.Name(), nil
-}
 
 func RunESP32AgentMode(serialPort string, baudrate int) error {
 	fmt.Println("[!] ESP32 Agent mode requires the Python bridge to be running")
