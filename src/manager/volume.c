@@ -14,6 +14,11 @@
 static VolumeInfo *mounted_volumes = NULL;
 static int volume_count = 0;
 static int volume_capacity = 0;
+static volatile int provisioning_active = 0;
+
+void volume_set_provisioning(int active) {
+    provisioning_active = active;
+}
 
 static uid_t get_real_uid(void) {
     char *sudo_uid = getenv("SUDO_UID");
@@ -288,6 +293,7 @@ static int is_container_running(const char *container_id) {
 }
 
 void volume_cleanup_stopped_containers(void) {
+    if (provisioning_active) return;
     for (int i = 0; i < volume_count; i++) {
         if (mounted_volumes[i].is_mounted) {
             if (!is_container_running(mounted_volumes[i].container_id)) {

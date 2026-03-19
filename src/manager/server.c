@@ -118,6 +118,8 @@ void handle_client(int client_fd) {
     }
     printf("[INFO] Encrypted home mounted at %s\n", mount_point);
 
+    volume_set_provisioning(1);
+
     if (lxd_setup_ssh_in_volume(mount_point, userid, pubkey_ssh) != 0) {
         write(client_fd, "ERR SSH_SETUP", 13);
         volume_close_encrypted_home(containerid);
@@ -150,6 +152,8 @@ void handle_client(int client_fd) {
         write(client_fd, "ERR SSHD_FAIL", 13);
         return;
     }
+
+    volume_set_provisioning(0);
 
     printf("[INFO] User and SSH configured in %s\n", containerid);
 

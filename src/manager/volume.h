@@ -17,5 +17,6 @@ int volume_close_encrypted_home(const char *container_id);
 int volume_is_home_encrypted(const char *container_id);
 void volume_cleanup_all(void);
 void volume_cleanup_stopped_containers(void);
+void volume_set_provisioning(int active);
 
 #endif

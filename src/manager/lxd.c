@@ -48,8 +48,16 @@ int lxd_create_container(const char *container_id, const char *image, const char
     if (home_mount && strlen(home_mount) > 0) {
         char abs_mount[512];
         if (realpath(home_mount, abs_mount) == NULL) {
-            strncpy(abs_mount, home_mount, sizeof(abs_mount) - 1);
-            abs_mount[sizeof(abs_mount) - 1] = '\0';
+            /* realpath fails if path doesn't exist; build absolute path manually */
+            char cwd[256];
+            if (getcwd(cwd, sizeof(cwd)) != NULL && home_mount[0] != '/') {
+                const char *rel = home_mount;
+                if (rel[0] == '.' && rel[1] == '/') rel += 2;
+                snprintf(abs_mount, sizeof(abs_mount), "%s/%s", cwd, rel);
+            } else {
+                strncpy(abs_mount, home_mount, sizeof(abs_mount) - 1);
+                abs_mount[sizeof(abs_mount) - 1] = '\0';
+            }
         }
         snprintf(cmd, sizeof(cmd),
             "lxc config device add %s home disk source=%s path=/home/%s",
