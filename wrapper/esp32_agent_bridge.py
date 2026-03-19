@@ -19,6 +19,7 @@ import serial
 import time
 import signal
 import argparse
+import getpass
 from typing import Optional, Tuple
 
 SSH_AGENTC_REQUEST_IDENTITIES = 11
@@ -32,6 +33,10 @@ SSH_AGENT_SUCCESS = 6
 SSH_AGENT_IDENTITIES_ANSWER = 12
 SSH_AGENT_SIGN_RESPONSE = 14
 
+PROTOCOL_UNLOCK = 0x03
+PROTOCOL_LOCK = 0x04
+SSH_AGENT_LOCKED = 0x20
+
 
 class ESP32AgentBridge:
     def __init__(self, serial_port: str, socket_path: str = "/tmp/esp32-agent.sock", baudrate: int = 115200):
@@ -41,6 +46,7 @@ class ESP32AgentBridge:
         self.serial: Optional[serial.Serial] = None
         self.serial_lock = threading.Lock()
         self.running = True
+        self.is_unlocked = False
 
     def connect_serial(self) -> bool:
         try:
@@ -132,6 +138,48 @@ class ESP32AgentBridge:
         """Build SSH wire format signature blob from raw 64-byte ed25519 signature"""
         return self._ssh_string(b"ssh-ed25519") + self._ssh_string(raw_sig)
 
+    def _prompt_password(self) -> str:
+        """Prompt for password on the bridge terminal"""
+        try:
+            return getpass.getpass("[*] ESP32 agent is locked. Enter password to unlock: ")
+        except (EOFError, KeyboardInterrupt):
+            return ""
+
+    def unlock(self, password: str) -> bool:
+        """Send UNLOCK command to ESP32 with password"""
+        if not self.send_to_esp32(PROTOCOL_UNLOCK, password.encode('utf-8')):
+            return False
+
+        result = self.recv_from_esp32(timeout=30.0)
+        if not result:
+            return False
+
+        msg_type, _ = result
+        if msg_type == SSH_AGENT_SUCCESS:
+            self.is_unlocked = True
+            print("[*] Agent unlocked successfully")
+            return True
+
+        print("[!] Unlock failed (wrong password?)")
+        return False
+
+    def lock(self) -> bool:
+        """Send LOCK command to ESP32"""
+        with self.serial_lock:
+            if not self.send_to_esp32(PROTOCOL_LOCK, b""):
+                return False
+
+            result = self.recv_from_esp32()
+            if not result:
+                return False
+
+            msg_type, _ = result
+            if msg_type == SSH_AGENT_SUCCESS:
+                self.is_unlocked = False
+                print("[*] Agent locked")
+                return True
+            return False
+
     def request_identities(self) -> bytes:
         """Request identities from ESP32 and format as SSH agent response"""
         with self.serial_lock:
@@ -193,6 +241,31 @@ class ESP32AgentBridge:
             return self._create_failure()
 
         msg_type, payload = result
+
+        # If locked, prompt for password and retry once
+        if msg_type == SSH_AGENT_LOCKED:
+            print("[*] ESP32 reports key is locked")
+            password = self._prompt_password()
+            if not password:
+                return self._create_failure()
+
+            with self.serial_lock:
+                if not self.unlock(password):
+                    return self._create_failure()
+
+                # Retry the sign request
+                retry_payload = self._ssh_string(raw_key) + self._ssh_string(data) + bytes([flags])
+                if not self.send_to_esp32(SSH_AGENTC_SIGN_REQUEST, retry_payload):
+                    return self._create_failure()
+
+                result = self.recv_from_esp32(timeout=30.0)
+
+            if not result:
+                print("[!] No response from ESP32 after unlock")
+                return self._create_failure()
+
+            msg_type, payload = result
+
         if msg_type != SSH_AGENT_SIGN_RESPONSE:
             print(f"[!] Sign response type: {msg_type}")
             return self._create_failure()

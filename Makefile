@@ -29,7 +29,21 @@ keygen: FORCE
 	ssh-keygen -f keys/_public.pem -i -m PKCS8 > keys/_public_openssh.pub
 
 esp32-keygen: FORCE
-	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --generate
+	@read -sp "Enter password for key encryption (leave empty for no encryption): " ESP32_PASS; \
+	echo; \
+	if [ -n "$$ESP32_PASS" ]; then \
+		python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --generate --password "$$ESP32_PASS"; \
+	else \
+		python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --generate; \
+	fi
+
+esp32-unlock: FORCE
+	@read -sp "Enter password: " ESP32_PASS; \
+	echo; \
+	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --unlock --password "$$ESP32_PASS"
+
+esp32-lock: FORCE
+	python3 wrapper/esp32_keytool.py --port /dev/ttyACM0 --lock
 
 esp32-upload: FORCE
 	esptool erase-flash
