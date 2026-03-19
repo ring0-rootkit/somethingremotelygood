@@ -23,6 +23,7 @@ func startSSH(host string, port int, userID, keyFile string) error {
 
 func startSSHWithAgent(host string, port int, userID, agentSocket string) error {
 	cmd := exec.Command("ssh",
+		"-vvv",
 		"-o", "StrictHostKeyChecking=no",
 		fmt.Sprintf("%s@%s", userID, host),
 		"-p", fmt.Sprint(port),
