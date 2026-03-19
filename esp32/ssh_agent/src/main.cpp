@@ -6,17 +6,17 @@
 #include "mbedtls/md.h"
 #include "esp_random.h"
 
-#define SSH_AGENTC_REQUEST_IDENTITIES     11
+#define SSH_AGENTC_REQUEST_IDENTITIES      11
 #define SSH_AGENTC_SIGN_REQUEST            13
 #define SSH_AGENTC_ADD_IDENTITY            17
 
 #define SSH_AGENT_FAILURE                  5
 #define SSH_AGENT_SUCCESS                  6
-#define SSH_AGENT_IDENTITIES_ANSWER       12
+#define SSH_AGENT_IDENTITIES_ANSWER        12
 #define SSH_AGENT_SIGN_RESPONSE            14
 
 #define PROTOCOL_SIGN_CHALLENGE            0x01
-#define PROTOCOL_GET_PUBLIC_KEY             0x02
+#define PROTOCOL_GET_PUBLIC_KEY            0x02
 #define PROTOCOL_UNLOCK                    0x03
 #define PROTOCOL_LOCK                      0x04
 #define PROTOCOL_GENERATE_ENCRYPTED        0x05
