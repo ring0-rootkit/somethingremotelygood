@@ -115,39 +115,28 @@ int lxd_setup_ssh_in_volume(const char *mount_point, const char *userid, const c
     snprintf(ssh_dir, sizeof(ssh_dir), "%s/.ssh", mount_point);
     snprintf(auth_keys, sizeof(auth_keys), "%s/.ssh/authorized_keys", mount_point);
 
-    struct stat st;
-    int needs_setup = 1;
-    if (stat(auth_keys, &st) == 0 && st.st_size > 0) {
-        needs_setup = 0;
+    if (mkdir(ssh_dir, 0700) != 0 && errno != EEXIST) {
+        fprintf(stderr, "[ERR] Failed to create .ssh dir in volume: %s\n", ssh_dir);
+        return -1;
     }
 
-    if (needs_setup) {
-        if (mkdir(ssh_dir, 0700) != 0 && errno != EEXIST) {
-            fprintf(stderr, "[ERR] Failed to create .ssh dir in volume: %s\n", ssh_dir);
-            return -1;
-        }
-
-        FILE *f = fopen(auth_keys, "w");
-        if (!f) {
-            fprintf(stderr, "[ERR] Failed to create authorized_keys in volume\n");
-            return -1;
-        }
-        if (!pubkey_ssh || strlen(pubkey_ssh) == 0) {
-            fprintf(stderr, "[ERR] Empty SSH public key for user %s\n", userid);
-            fclose(f);
-            unlink(auth_keys);
-            return -1;
-        }
-        fprintf(f, "%s\n", pubkey_ssh);
-        fclose(f);
-
-        chmod(auth_keys, 0600);
-        chmod(ssh_dir, 0700);
-
-        printf("[INFO] SSH keys set up in volume for %s (%zu bytes)\n", userid, strlen(pubkey_ssh));
-    } else {
-        printf("[INFO] SSH already set up in volume for %s\n", userid);
+    if (!pubkey_ssh || strlen(pubkey_ssh) == 0) {
+        fprintf(stderr, "[ERR] Empty SSH public key for user %s\n", userid);
+        return -1;
     }
+
+    FILE *f = fopen(auth_keys, "w");
+    if (!f) {
+        fprintf(stderr, "[ERR] Failed to create authorized_keys in volume\n");
+        return -1;
+    }
+    fprintf(f, "%s\n", pubkey_ssh);
+    fclose(f);
+
+    chmod(auth_keys, 0600);
+    chmod(ssh_dir, 0700);
+
+    printf("[INFO] SSH keys set up in volume for %s (%zu bytes)\n", userid, strlen(pubkey_ssh));
 
     return 0;
 }
