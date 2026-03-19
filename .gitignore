@@ -7,3 +7,4 @@ build
 homes/
 *.o
 logs
+**/.pio
