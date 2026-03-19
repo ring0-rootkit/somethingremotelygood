@@ -41,7 +41,23 @@ def send_packet(ser, msg_type, data):
 def read_packet(ser, timeout=10.0):
     ser.timeout = timeout
 
-    header = ser.read(4)
+    # Skip any debug text output from ESP32 (ASCII bytes) until we find
+    # a valid packet header starting with 0x00 (length < 16MB)
+    deadline = time.time() + timeout
+    header = b""
+    while time.time() < deadline:
+        b = ser.read(1)
+        if len(b) == 0:
+            continue
+        if len(header) == 0:
+            if b[0] == 0x00:
+                header = b
+            # else skip (debug text)
+        else:
+            header += b
+            if len(header) == 4:
+                break
+
     if len(header) < 4:
         return None, None
 
@@ -50,6 +66,9 @@ def read_packet(ser, timeout=10.0):
     if length < 1 or length > 4096:
         return None, None
 
+    remaining = deadline - time.time()
+    if remaining > 0:
+        ser.timeout = remaining
     data = ser.read(length)
     if len(data) < length:
         return None, None

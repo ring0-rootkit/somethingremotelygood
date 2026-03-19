@@ -94,19 +94,52 @@ class ESP32AgentBridge:
             return False
 
     def recv_from_esp32(self, timeout: float = 10.0) -> Optional[Tuple[int, bytes]]:
-        """Read packet from ESP32: [4-byte-len][type+payload]"""
+        """Read packet from ESP32: [4-byte-len][type+payload]
+        Skips any debug text (ASCII bytes) until a valid packet header is found."""
         try:
-            header = self._serial_read_exact(4, timeout)
-            if not header:
+            deadline = time.time() + timeout
+            header = b""
+            old_timeout = self.serial.timeout if self.serial else None
+
+            if not self.serial:
+                return None
+
+            self.serial.timeout = timeout
+
+            # Skip debug text until we find 0x00 (start of length header)
+            while time.time() < deadline:
+                b = self.serial.read(1)
+                if len(b) == 0:
+                    continue
+                if len(header) == 0:
+                    if b[0] == 0x00:
+                        header = b
+                else:
+                    header += b
+                    if len(header) == 4:
+                        break
+
+            if len(header) < 4:
+                if old_timeout is not None:
+                    self.serial.timeout = old_timeout
                 return None
 
             length = struct.unpack(">I", header)[0]
             if length < 1 or length > 4096:
                 print(f"[!] Bad packet length from ESP32: {length}")
+                if old_timeout is not None:
+                    self.serial.timeout = old_timeout
                 return None
 
-            data = self._serial_read_exact(length, timeout)
-            if not data:
+            remaining = deadline - time.time()
+            if remaining > 0:
+                self.serial.timeout = remaining
+            data = self.serial.read(length)
+
+            if old_timeout is not None:
+                self.serial.timeout = old_timeout
+
+            if len(data) < length:
                 return None
 
             msg_type = data[0]
