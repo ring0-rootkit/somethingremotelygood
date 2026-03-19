@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"syscall"
+
+	"golang.org/x/term"
 )
 
 const (
@@ -23,8 +26,12 @@ const (
 	sshAgentIdentitiesAnswer uint8 = 12
 	sshAgentSignResponse     uint8 = 14
 
+	sshAgentCExtension uint8 = 27
+
 	sshAgentRSASHA2256 uint8 = 2
 	sshAgentRSASHA2512 uint8 = 4
+
+	sshAgentLocked uint8 = 0x20
 )
 
 type Agent struct {
@@ -76,6 +83,10 @@ func (a *Agent) sendRequest(reqType uint8, payload []byte) ([]byte, error) {
 		return nil, errors.New("agent request failed")
 	}
 
+	if resp[0] == sshAgentLocked {
+		return nil, errors.New("agent locked")
+	}
+
 	return resp, nil
 }
 
@@ -122,6 +133,20 @@ func (a *Agent) List() ([]AgentKey, error) {
 	}
 
 	return keys, nil
+}
+
+func (a *Agent) Unlock(password []byte) error {
+	payload := new(bytes.Buffer)
+	// Extension name
+	extName := []byte("esp32-unlock")
+	binary.Write(payload, binary.BigEndian, uint32(len(extName)))
+	payload.Write(extName)
+	// Password as SSH string
+	binary.Write(payload, binary.BigEndian, uint32(len(password)))
+	payload.Write(password)
+
+	_, err := a.sendRequest(sshAgentCExtension, payload.Bytes())
+	return err
 }
 
 func (a *Agent) Sign(keyBlob []byte, data []byte, flags uint8) ([]byte, error) {
@@ -190,6 +215,21 @@ func (e *ESP32Agent) SignChallenge(challenge []byte) ([]byte, error) {
 	flags := uint8(0)
 
 	sig, err := e.agent.Sign(e.publicKey, challenge, flags)
+	if err != nil && err.Error() == "agent locked" {
+		fmt.Print("[*] ESP32 agent is locked. Enter password: ")
+		password, readErr := term.ReadPassword(int(syscall.Stdin))
+		fmt.Println()
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read password: %w", readErr)
+		}
+
+		if unlockErr := e.agent.Unlock(password); unlockErr != nil {
+			return nil, fmt.Errorf("unlock failed (wrong password?): %w", unlockErr)
+		}
+		fmt.Println("[+] Agent unlocked")
+
+		sig, err = e.agent.Sign(e.publicKey, challenge, flags)
+	}
 	if err != nil {
 		return nil, err
 	}
