@@ -1,11 +1,10 @@
 """Database access layer using sqlcipher CLI subprocess (no C extension needed)."""
 
-import json
 import subprocess
 from ai.config import DB_PASSWORD, DB_PATH
 
-# ASCII unit separator — won't appear in normal data
-_SEP = "\x1f"
+# Separator for .mode list — a string unlikely to appear in data
+_SEP = "||<SEP>||"
 
 
 class SQLCipherConnection:
@@ -19,7 +18,8 @@ class SQLCipherConnection:
         if self._closed:
             raise RuntimeError("Connection is closed")
         commands = f'PRAGMA key="{DB_PASSWORD}";\n'
-        commands += f".separator {repr(_SEP)}\n.headers off\n"
+        commands += ".headers off\n"
+        commands += f'.separator "{_SEP}"\n'
         commands += sql.rstrip(";") + ";\n"
         result = subprocess.run(
             ["sqlcipher", DB_PATH],
