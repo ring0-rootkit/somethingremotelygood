@@ -1,9 +1,11 @@
 """Database access layer using sqlcipher CLI subprocess (no C extension needed)."""
 
-import csv
-import io
+import json
 import subprocess
 from ai.config import DB_PASSWORD, DB_PATH
+
+# ASCII unit separator — won't appear in normal data
+_SEP = "\x1f"
 
 
 class SQLCipherConnection:
@@ -12,13 +14,12 @@ class SQLCipherConnection:
     def __init__(self):
         self._closed = False
 
-    def _run(self, sql, raw=False):
-        """Execute SQL via sqlcipher CLI and return output."""
+    def _run(self, sql):
+        """Execute SQL via sqlcipher CLI and return raw stdout."""
         if self._closed:
             raise RuntimeError("Connection is closed")
         commands = f'PRAGMA key="{DB_PASSWORD}";\n'
-        if not raw:
-            commands += ".mode csv\n.headers off\n"
+        commands += f".separator {repr(_SEP)}\n.headers off\n"
         commands += sql.rstrip(";") + ";\n"
         result = subprocess.run(
             ["sqlcipher", DB_PATH],
@@ -31,22 +32,19 @@ class SQLCipherConnection:
         return result.stdout
 
     def execute(self, sql, params=None):
-        """Execute a query with optional parameter substitution.
-
-        Uses safe quoting for parameters (single quotes escaped).
-        Returns list of tuples for SELECT, or empty list for non-SELECT.
-        """
+        """Execute a query, return list of tuples."""
         if params:
             sql = self._bind_params(sql, params)
         output = self._run(sql)
         if not output.strip():
             return []
-        reader = csv.reader(io.StringIO(output))
         rows = []
-        for row in reader:
+        for line in output.rstrip("\n").split("\n"):
+            if not line:
+                continue
+            fields = line.split(_SEP)
             converted = []
-            for val in row:
-                # Try to convert to int/float where appropriate
+            for val in fields:
                 try:
                     converted.append(int(val))
                 except ValueError:
@@ -109,7 +107,6 @@ class SQLCipherConnection:
 def get_connection():
     """Return a new SQLCipher connection wrapper."""
     conn = SQLCipherConnection()
-    # Verify the password works
     rows = conn.execute("SELECT count(*) FROM sqlite_master")
     if not rows:
         raise RuntimeError("Failed to open database — wrong password?")
@@ -223,7 +220,6 @@ def get_container_key(user_id, container_id, conn=None):
     if own_conn:
         conn = get_connection()
     try:
-        # Use hex() to extract blob data reliably through CSV
         rows = conn.execute(
             "SELECT hex(container_key) FROM containers WHERE user_id = ? AND container_id = ?",
             (user_id, container_id),

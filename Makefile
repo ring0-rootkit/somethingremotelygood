@@ -206,6 +206,23 @@ list-anomalies: FORCE
 list-reports: FORCE
 	sudo DB_PASSWORD=123 python3 src/ai/command_analysis.py --list
 
+generate-baseline: FORCE
+	@if [ -z "$(USER)" ]; then \
+		echo "Usage: make generate-baseline USER=<username> [CONTAINER=<id>] [DAYS=30]"; \
+		exit 1; \
+	fi
+	sudo DB_PASSWORD=123 python3 src/ai/generate_user_baseline.py "$(USER)" \
+		$(if $(CONTAINER),--container "$(CONTAINER)") \
+		$(if $(DAYS),--days "$(DAYS)")
+
+clean-baseline: FORCE
+	@if [ -z "$(USER)" ]; then \
+		echo "Usage: make clean-baseline USER=<username> [CONTAINER=<id>]"; \
+		exit 1; \
+	fi
+	sudo DB_PASSWORD=123 python3 src/ai/generate_user_baseline.py "$(USER)" \
+		$(if $(CONTAINER),--container "$(CONTAINER)") --clean
+
 generate-test-data: FORCE
 	sudo DB_PASSWORD=123 python3 src/ai/generate_test_data.py $(ARGS)
 
