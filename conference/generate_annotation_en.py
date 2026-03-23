@@ -30,7 +30,7 @@ def setup_styles(doc):
     else:
         s = styles['Название статьи CTDA']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(12)
+    s.font.size = Pt(14)
     s.font.bold = True
     s.font.all_caps = True
     s.font.color.rgb = RGBColor(0, 0, 0)
@@ -44,7 +44,7 @@ def setup_styles(doc):
     else:
         s = styles['Автор']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(11)
+    s.font.size = Pt(14)
     s.font.bold = True
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -57,7 +57,7 @@ def setup_styles(doc):
     else:
         s = styles['Аффилиация']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(10)
+    s.font.size = Pt(12)
     s.font.italic = True
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -70,7 +70,7 @@ def setup_styles(doc):
     else:
         s = styles['Аннотация']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(10)
+    s.font.size = Pt(12)
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     s.paragraph_format.space_before = Pt(0)
@@ -83,7 +83,7 @@ def setup_styles(doc):
     else:
         s = styles['Ключевые слова']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(10)
+    s.font.size = Pt(12)
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     s.paragraph_format.space_before = Pt(0)
@@ -93,7 +93,7 @@ def setup_styles(doc):
 
     normal = styles['Normal']
     normal.font.name = 'Times New Roman'
-    normal.font.size = Pt(11)
+    normal.font.size = Pt(14)
     normal.font.color.rgb = RGBColor(0, 0, 0)
     normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     normal.paragraph_format.first_line_indent = Cm(1.0)
@@ -107,10 +107,10 @@ def add_keywords(doc, text):
     run_label = p.add_run('Keywords: ')
     run_label.italic = True
     run_label.font.name = 'Times New Roman'
-    run_label.font.size = Pt(10)
+    run_label.font.size = Pt(12)
     run_text = p.add_run(text)
     run_text.font.name = 'Times New Roman'
-    run_text.font.size = Pt(10)
+    run_text.font.size = Pt(12)
 
 
 def main():
@@ -124,7 +124,8 @@ def main():
 
     # Title
     doc.add_paragraph(
-        'DEVELOPMENT OF A SECURE REMOTE VIRTUALIZATION SYSTEM',
+        'DEVELOPMENT OF A SECURE REMOTE VIRTUALIZATION SYSTEM '
+        'WITH INTELLIGENT USER BEHAVIOR ANALYSIS',
         style='Название статьи CTDA'
     )
 
@@ -138,26 +139,32 @@ def main():
         '220030, Minsk, Belarus, ivanov@bsu.by'
     )
     run.font.name = 'Times New Roman'
-    run.font.size = Pt(10)
+    run.font.size = Pt(12)
     run.italic = True
 
     p = doc.add_paragraph(style='Аффилиация')
-    run = p.add_run('Supervisor — P. P. Petrov, Senior Lecturer')
+    run = p.add_run('Supervisor \u2014 P. P. Petrov, Senior Lecturer')
     run.font.name = 'Times New Roman'
-    run.font.size = Pt(10)
+    run.font.size = Pt(12)
     run.italic = True
 
     # Annotation
     doc.add_paragraph(
         'The architecture and implementation of a system for secure remote access '
         'to containerized environments with hardware-based cryptographic key storage on '
-        'an ESP32-C3 microcontroller are presented. The system provides generation, encryption, '
+        'an ESP32-C3 microcontroller and a two-level intelligent user behavior analysis '
+        'subsystem are presented. The system provides generation, encryption, '
         'and usage of Ed25519 keys directly on the microcontroller, eliminating '
         'the storage of private keys on the user\'s computer. An SSH agent protocol '
         'is implemented via a serial bridge in Python, a Go client for authentication, and '
         'a C manager for LXD container management with LUKS volume encryption. '
-        'Testing results confirm the correctness of cryptographic operations '
-        'and acceptable signing performance (under 250 ms).',
+        'To detect anomalous behavior, statistical analysis of session patterns '
+        'is employed (z-score on time-of-day, frequency, duration), while for '
+        'in-depth investigation, command history analysis is performed by a local '
+        'language model (Ollama/Qwen2.5) with five-layer prompt injection defense. '
+        'Testing results confirm the correctness of cryptographic operations, '
+        'acceptable signing performance (under 250 ms), and effectiveness of '
+        'anomaly detection.',
         style='Аннотация'
     )
 
@@ -165,7 +172,8 @@ def main():
     add_keywords(
         doc,
         'hardware key storage; ESP32; Ed25519; SSH agent; '
-        'container virtualization; LXD; LUKS; cryptography.'
+        'container virtualization; LXD; LUKS; cryptography; '
+        'user behavior analysis; anomaly detection; LLM; Ollama.'
     )
 
     print(f'[*] Saving to {OUTPUT_PATH}...')

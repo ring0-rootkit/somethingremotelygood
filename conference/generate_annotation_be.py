@@ -30,7 +30,7 @@ def setup_styles(doc):
     else:
         s = styles['Название статьи CTDA']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(12)
+    s.font.size = Pt(14)
     s.font.bold = True
     s.font.all_caps = True
     s.font.color.rgb = RGBColor(0, 0, 0)
@@ -44,7 +44,7 @@ def setup_styles(doc):
     else:
         s = styles['Автор']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(11)
+    s.font.size = Pt(14)
     s.font.bold = True
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -57,7 +57,7 @@ def setup_styles(doc):
     else:
         s = styles['Аффилиация']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(10)
+    s.font.size = Pt(12)
     s.font.italic = True
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -70,7 +70,7 @@ def setup_styles(doc):
     else:
         s = styles['Аннотация']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(10)
+    s.font.size = Pt(12)
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     s.paragraph_format.space_before = Pt(0)
@@ -83,7 +83,7 @@ def setup_styles(doc):
     else:
         s = styles['Ключевые слова']
     s.font.name = 'Times New Roman'
-    s.font.size = Pt(10)
+    s.font.size = Pt(12)
     s.font.color.rgb = RGBColor(0, 0, 0)
     s.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     s.paragraph_format.space_before = Pt(0)
@@ -93,7 +93,7 @@ def setup_styles(doc):
 
     normal = styles['Normal']
     normal.font.name = 'Times New Roman'
-    normal.font.size = Pt(11)
+    normal.font.size = Pt(14)
     normal.font.color.rgb = RGBColor(0, 0, 0)
     normal.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     normal.paragraph_format.first_line_indent = Cm(1.0)
@@ -107,10 +107,10 @@ def add_keywords(doc, text):
     run_label = p.add_run('Ключавыя словы: ')
     run_label.italic = True
     run_label.font.name = 'Times New Roman'
-    run_label.font.size = Pt(10)
+    run_label.font.size = Pt(12)
     run_text = p.add_run(text)
     run_text.font.name = 'Times New Roman'
-    run_text.font.size = Pt(10)
+    run_text.font.size = Pt(12)
 
 
 def main():
@@ -124,7 +124,8 @@ def main():
 
     # Title
     doc.add_paragraph(
-        'РАСПРАЦОЎКА АБАРОНЕНАЙ СІСТЭМЫ АДДАЛЕНАЙ ВІРТУАЛІЗАЦЫІ',
+        'РАСПРАЦОЎКА АБАРОНЕНАЙ СІСТЭМЫ АДДАЛЕНАЙ ВІРТУАЛІЗАЦЫІ '
+        'З ІНТЭЛЕКТУАЛЬНЫМ АНАЛІЗАМ ПАВОДЗІН КАРЫСТАЛЬНІКАЎ',
         style='Название статьи CTDA'
     )
 
@@ -138,26 +139,32 @@ def main():
         '220030, г. Мінск, Беларусь, ivanov@bsu.by'
     )
     run.font.name = 'Times New Roman'
-    run.font.size = Pt(10)
+    run.font.size = Pt(12)
     run.italic = True
 
     p = doc.add_paragraph(style='Аффилиация')
     run = p.add_run('Навуковы кіраўнік — П. П. Пятроў, старшы выкладчык')
     run.font.name = 'Times New Roman'
-    run.font.size = Pt(10)
+    run.font.size = Pt(12)
     run.italic = True
 
     # Annotation
     doc.add_paragraph(
         'Прадстаўлена архітэктура і рэалізацыя сістэмы бяспечнага аддаленага доступу '
         'да кантэйнерных асяроддзяў з апаратным захоўваннем крыптаграфічных ключоў на '
-        'мікракантролеры ESP32-C3. Сістэма забяспечвае генерацыю, шыфраванне і '
+        'мікракантролеры ESP32-C3 і двухузроўневай падсістэмай інтэлектуальнага аналізу '
+        'паводзін карыстальнікаў. Сістэма забяспечвае генерацыю, шыфраванне і '
         'выкарыстанне ключоў Ed25519 непасрэдна на мікракантролеры, выключаючы '
         'захоўванне прыватных ключоў на камп\'ютары карыстальніка. Рэалізаваны пратакол '
         'SSH-агента праз серыйны мост на Python, Go-кліент для аўтэнтыфікацыі і '
         'C-менеджар для кіравання LXD-кантэйнерамі з LUKS-шыфраваннем тамоў. '
-        'Вынікі тэсціравання пацвярджаюць карэктнасць крыптаграфічных аперацый '
-        'і прымальную прадукцыйнасць подпісу (менш за 250 мс).',
+        'Для выяўлення анамальных паводзін выкарыстоўваецца статыстычны аналіз '
+        'сесійных патэрнаў (z-score па часе, частаце, працягласці), а для '
+        'паглыбленага расследавання — аналіз гісторыі каманд лакальнай моўнай '
+        'мадэллю (Ollama/Qwen2.5) з пяціўзроўневай абаронай ад ін\'екцый у промпт. '
+        'Вынікі тэсціравання пацвярджаюць карэктнасць крыптаграфічных аперацый, '
+        'прымальную прадукцыйнасць подпісу (менш за 250 мс) і эфектыўнасць '
+        'выяўлення анамалій.',
         style='Аннотация'
     )
 
@@ -165,7 +172,8 @@ def main():
     add_keywords(
         doc,
         'апаратнае захоўванне ключоў; ESP32; Ed25519; SSH-агент; '
-        'кантэйнерная віртуалізацыя; LXD; LUKS; крыптаграфія.'
+        'кантэйнерная віртуалізацыя; LXD; LUKS; крыптаграфія; '
+        'аналіз паводзін карыстальнікаў; выяўленне анамалій; LLM; Ollama.'
     )
 
     print(f'[*] Saving to {OUTPUT_PATH}...')
