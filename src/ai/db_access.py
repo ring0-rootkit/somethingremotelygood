@@ -17,9 +17,12 @@ class SQLCipherConnection:
         """Execute SQL via sqlcipher CLI and return raw stdout."""
         if self._closed:
             raise RuntimeError("Connection is closed")
-        commands = f'PRAGMA key="{DB_PASSWORD}";\n'
-        commands += ".headers off\n"
+        commands = ".headers off\n"
         commands += f'.separator "{_SEP}"\n'
+        commands += ".output /dev/null\n"
+        commands += f'PRAGMA key="{DB_PASSWORD}";\n'
+        commands += "SELECT count(*) FROM sqlite_master;\n"
+        commands += ".output stdout\n"
         commands += sql.rstrip(";") + ";\n"
         result = subprocess.run(
             ["sqlcipher", DB_PATH],
