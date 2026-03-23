@@ -159,10 +159,18 @@ def analyze_anomaly(anomaly_id):
                 print(f"    No container key found, skipping.")
                 continue
 
+            # Try LUKS mount first, fall back to test directory
             mount_point = mount_volume(container_id, container_key)
+            needs_unmount = mount_point is not None
             if not mount_point:
-                print(f"    Could not mount volume, skipping.")
-                continue
+                # Check for test data directory (from generate_test_data.py --with-history)
+                test_dir = os.path.join(HOMES_DIR, f"test_{user_id}")
+                if os.path.isdir(test_dir):
+                    print(f"    Using test history from {test_dir}")
+                    mount_point = test_dir
+                else:
+                    print(f"    No volume or test history found, skipping.")
+                    continue
 
             try:
                 commands = read_shell_history(mount_point, user_id)
@@ -195,7 +203,8 @@ def analyze_anomaly(anomaly_id):
                 print(f"    Result: {result['risk_level'].upper()} — {result['summary']}")
                 print(f"    → Saved as command report #{report_id}")
             finally:
-                unmount_volume(container_id)
+                if needs_unmount:
+                    unmount_volume(container_id)
 
         return 0
     finally:
