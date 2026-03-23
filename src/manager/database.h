@@ -14,5 +14,6 @@ int db_add_container(const char *container_id, const char *user_id, const uint8_
 int db_get_user_pubkey(const char *user_id, char *pubkey_out, size_t outlen);
 int db_get_user_pubkey_ssh(const char *user_id, char *pubkey_out, size_t outlen);
 int db_get_container_key(const char *user_id, const char *container_id, uint8_t *key_out, size_t key_len);
+int db_log_session_event(const char *user_id, const char *container_id, const char *event_type);
 
 #endif

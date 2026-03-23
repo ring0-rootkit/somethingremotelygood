@@ -24,6 +24,12 @@ int main(int argc, char **argv) {
         return cmd_add_user(argc-1, &argv[1]);
     } else if (strcmp(cmd, "add-container") == 0) {
         return cmd_add_container(argc-1, &argv[1]);
+    } else if (strcmp(cmd, "list-anomalies") == 0) {
+        return cmd_list_anomalies();
+    } else if (strcmp(cmd, "list-reports") == 0) {
+        return cmd_list_reports();
+    } else if (strcmp(cmd, "review-anomaly") == 0) {
+        return cmd_review_anomaly(argc-1, &argv[1]);
     }
 
     usage(argv[0]);

@@ -167,3 +167,47 @@ setup: FORCE
 
 manager-run: FORCE
 	sudo DB_PASSWORD=123 ./build/manager serve 2>&1 | tee manager.log
+
+# --- Admin CLI (via C manager) ---
+list-anomalies-db: FORCE
+	sudo DB_PASSWORD=123 ./build/manager list-anomalies
+
+list-reports-db: FORCE
+	sudo DB_PASSWORD=123 ./build/manager list-reports
+
+review-anomaly: FORCE
+	@if [ -z "$(REPORT_ID)" ] || [ -z "$(STATUS)" ]; then \
+		echo "Usage: make review-anomaly REPORT_ID=<id> STATUS=<reviewed|escalated|dismissed>"; \
+		exit 1; \
+	fi
+	sudo DB_PASSWORD=123 ./build/manager review-anomaly "$(REPORT_ID)" "$(STATUS)"
+
+# --- AI Behavior Analysis ---
+anomaly-detect: FORCE
+	sudo DB_PASSWORD=123 python3 src/ai/anomaly_detect.py
+
+anomaly-detect-user: FORCE
+	@if [ -z "$(USER)" ]; then \
+		echo "Usage: make anomaly-detect-user USER=<username>"; \
+		exit 1; \
+	fi
+	sudo DB_PASSWORD=123 python3 src/ai/anomaly_detect.py --user "$(USER)"
+
+analyze-anomaly: FORCE
+	@if [ -z "$(REPORT_ID)" ]; then \
+		echo "Usage: make analyze-anomaly REPORT_ID=<id>"; \
+		exit 1; \
+	fi
+	sudo DB_PASSWORD=123 LLM_API_KEY=$${LLM_API_KEY} python3 src/ai/command_analysis.py --anomaly-id "$(REPORT_ID)"
+
+list-anomalies: FORCE
+	sudo DB_PASSWORD=123 python3 src/ai/anomaly_detect.py --list-pending
+
+list-reports: FORCE
+	sudo DB_PASSWORD=123 python3 src/ai/command_analysis.py --list
+
+generate-test-data: FORCE
+	sudo DB_PASSWORD=123 python3 src/ai/generate_test_data.py $(ARGS)
+
+clean-test-data: FORCE
+	sudo DB_PASSWORD=123 python3 src/ai/generate_test_data.py --clean

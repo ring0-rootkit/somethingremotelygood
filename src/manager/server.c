@@ -84,10 +84,12 @@ void handle_client(int client_fd) {
     }
 
     if (!verify_signature(pubkey_pem, challenge, sizeof(challenge), signature, sig_len)) {
+        db_log_session_event(userid, "", "auth_fail");
         write(client_fd, "ERR VERIFY_FAIL", 15);
         fprintf(stderr, "challenge: %128s\nsignature: %128s\n", challenge, signature);
         return;
     }
+    db_log_session_event(userid, "", "auth_ok");
     write(client_fd, "REQ CID", 7);
 
     r = read(client_fd, containerid, sizeof(containerid)-1);
@@ -190,6 +192,7 @@ void handle_client(int client_fd) {
                 int connections = atoi(buf);
                 if (connections > 0) {
                     ssh_connected = 1;
+                    db_log_session_event(userid, containerid, "ssh_connected");
                     printf("[INFO] SSH connection detected on %s\n", containerid);
                 }
             }
@@ -203,6 +206,7 @@ void handle_client(int client_fd) {
 
     if (!ssh_connected) {
         printf("[INFO] No SSH connection to %s within 60s, stopping container\n", containerid);
+        db_log_session_event(userid, containerid, "timeout");
         lxd_stop_container(containerid);
         printf("[INFO] Container %s stopped and home encrypted\n", containerid);
         return;
@@ -227,6 +231,7 @@ void handle_client(int client_fd) {
                     empty_count++;
                     if (empty_count >= 3) {
                         ssh_active = 0;
+                        db_log_session_event(userid, containerid, "ssh_disconnected");
                         printf("[INFO] No active SSH connections on %s, stopping container\n", containerid);
                     }
                 } else {
@@ -242,6 +247,7 @@ void handle_client(int client_fd) {
     }
 
     if (ssh_active) {
+        db_log_session_event(userid, containerid, "timeout");
         printf("[INFO] Timeout reached for %s, stopping container\n", containerid);
     }
 

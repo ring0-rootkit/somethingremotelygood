@@ -2,12 +2,16 @@
 #include "database.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 void usage(const char *prog) {
     fprintf(stderr, "Usage:\n");
     fprintf(stderr, "  %s serve                # run manager\n", prog);
     fprintf(stderr, "  %s add-user <id> <pubkey.pem> <pubkey_ssh>   # add/update user\n", prog);
     fprintf(stderr, "  %s add-container <ctr_id> <user_id> <keyfile> # add container record\n", prog);
+    fprintf(stderr, "  %s list-anomalies                             # list pending anomaly reports\n", prog);
+    fprintf(stderr, "  %s list-reports                               # list command reports\n", prog);
+    fprintf(stderr, "  %s review-anomaly <id> <status>               # review anomaly report\n", prog);
 }
 
 int cmd_add_user(int argc, char **argv) {
@@ -89,4 +93,96 @@ int cmd_add_container(int argc, char **argv) {
     }
 
     return r;
+}
+
+int cmd_list_anomalies(void) {
+    const char *sql = "SELECT report_id, user_id, anomaly_type, severity, summary, "
+                      "datetime(created_at, 'unixepoch') FROM anomaly_reports "
+                      "WHERE status = 'pending' ORDER BY created_at DESC";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Query failed: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    printf("%-6s %-12s %-16s %-8s %-20s %s\n",
+           "ID", "User", "Type", "Severity", "Created", "Summary");
+    printf("-------------------------------------------------------------------------------------\n");
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        printf("%-6d %-12s %-16s %-8s %-20s %s\n",
+               sqlite3_column_int(stmt, 0),
+               (const char *)sqlite3_column_text(stmt, 1),
+               (const char *)sqlite3_column_text(stmt, 2),
+               (const char *)sqlite3_column_text(stmt, 3),
+               (const char *)sqlite3_column_text(stmt, 5),
+               (const char *)sqlite3_column_text(stmt, 4));
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+int cmd_list_reports(void) {
+    const char *sql = "SELECT r.report_id, r.anomaly_report_id, r.user_id, r.container_id, "
+                      "r.risk_level, datetime(r.created_at, 'unixepoch'), "
+                      "substr(r.analysis_text, 1, 80) "
+                      "FROM command_reports r ORDER BY r.created_at DESC";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Query failed: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    printf("%-6s %-10s %-12s %-12s %-12s %-20s %s\n",
+           "ID", "Anomaly", "User", "Container", "Risk", "Created", "Analysis");
+    printf("---------------------------------------------------------------------------------------------------\n");
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        printf("%-6d %-10d %-12s %-12s %-12s %-20s %s\n",
+               sqlite3_column_int(stmt, 0),
+               sqlite3_column_int(stmt, 1),
+               (const char *)sqlite3_column_text(stmt, 2),
+               (const char *)sqlite3_column_text(stmt, 3),
+               (const char *)sqlite3_column_text(stmt, 4),
+               (const char *)sqlite3_column_text(stmt, 5),
+               (const char *)sqlite3_column_text(stmt, 6));
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+int cmd_review_anomaly(int argc, char **argv) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: review-anomaly <report_id> <status>\n");
+        fprintf(stderr, "  status: reviewed, escalated, dismissed\n");
+        return -1;
+    }
+    int report_id = atoi(argv[1]);
+    const char *status = argv[2];
+
+    if (strcmp(status, "reviewed") != 0 && strcmp(status, "escalated") != 0 &&
+        strcmp(status, "dismissed") != 0) {
+        fprintf(stderr, "Invalid status. Use: reviewed, escalated, dismissed\n");
+        return -1;
+    }
+
+    const char *sql = "UPDATE anomaly_reports SET status = ? WHERE report_id = ?";
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Query failed: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_bind_text(stmt, 1, status, -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 2, report_id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    if (rc == SQLITE_DONE) {
+        if (sqlite3_changes(db) > 0) {
+            printf("Anomaly report %d marked as '%s'\n", report_id, status);
+        } else {
+            fprintf(stderr, "No report found with ID %d\n", report_id);
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "Update failed: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    return 0;
 }
