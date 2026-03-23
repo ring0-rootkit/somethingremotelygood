@@ -163,6 +163,8 @@ make analyze-anomaly REPORT_ID=1
 # 5. View results
 make list-reports
 
+make generate-pdf JSON=reports/<filename>.json
+
 # 6. Mark as reviewed
 make review-anomaly REPORT_ID=1 STATUS=reviewed
 ```

@@ -11,3 +11,4 @@ logs
 
 manager.log
 src/ai/__pycache__/
+reports
