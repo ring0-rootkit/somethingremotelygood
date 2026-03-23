@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""AI 1 — Statistical anomaly detection on user session patterns."""
-
 import argparse
 import json
 import math
@@ -20,7 +18,6 @@ from ai.db_access import (
 
 
 def compute_mean_stddev(values):
-    """Compute mean and standard deviation."""
     if not values:
         return 0.0, 0.0
     n = len(values)
@@ -32,7 +29,6 @@ def compute_mean_stddev(values):
 
 
 def bucket_by_hour(sessions):
-    """Count sessions per hour-of-day bucket."""
     buckets = defaultdict(int)
     for s in sessions:
         hour = time.gmtime(s["timestamp"]).tm_hour
@@ -41,7 +37,6 @@ def bucket_by_hour(sessions):
 
 
 def sessions_per_day(sessions):
-    """Count sessions per calendar day."""
     days = defaultdict(int)
     for s in sessions:
         day = time.strftime("%Y-%m-%d", time.gmtime(s["timestamp"]))
@@ -50,7 +45,6 @@ def sessions_per_day(sessions):
 
 
 def compute_durations(sessions):
-    """Pair ssh_connected/ssh_disconnected events to compute session durations."""
     durations = []
     pending = {}
     for s in sessions:
