@@ -48,29 +48,25 @@ def generate_users(conn, n=5):
     users = []
     for i in range(n):
         user_id = f"testuser{i}"
-        # Dummy PEM and SSH keys for testing
         pem = f"-----BEGIN PUBLIC KEY-----\nTEST_KEY_{i}\n-----END PUBLIC KEY-----"
         ssh = f"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAItest{i:040d} test@test"
-        conn.execute(
+        conn.execute_update(
             "INSERT OR REPLACE INTO users(user_id, public_key_pem, public_key_ssh) VALUES(?,?,?)",
             (user_id, pem, ssh),
         )
-        # Create a container too
         container_id = f"ctr-{user_id}"
         container_key = os.urandom(32)
-        conn.execute(
+        conn.execute_update(
             "INSERT OR REPLACE INTO containers(container_id, user_id, container_key) VALUES(?,?,?)",
             (container_id, user_id, container_key),
         )
         users.append((user_id, container_id))
-    conn.commit()
     return users
 
 
 def generate_normal_sessions(conn, user_id, container_id, days=60):
     """Generate normal session patterns for a user."""
     now = int(time.time())
-    # Each user has preferred hours (e.g., 9-17 with some variance)
     preferred_start = random.randint(7, 10)
     preferred_end = random.randint(16, 19)
     sessions_per_day_range = (1, 4)
@@ -85,25 +81,21 @@ def generate_normal_sessions(conn, user_id, container_id, days=60):
             minute = random.randint(0, 59)
             ts = day_start + hour * 3600 + minute * 60
 
-            duration = random.gauss(45 * 60, 20 * 60)  # ~45min ± 20min
+            duration = random.gauss(45 * 60, 20 * 60)
             duration = max(5 * 60, min(120 * 60, int(duration)))
 
-            # auth_ok
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "auth_ok", ts),
             )
-            # ssh_connected
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "ssh_connected", ts + 5),
             )
-            # ssh_disconnected
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "ssh_disconnected", ts + 5 + duration),
             )
-    conn.commit()
 
 
 def inject_anomalous_sessions(conn, user_id, container_id, days=2):
@@ -117,17 +109,17 @@ def inject_anomalous_sessions(conn, user_id, container_id, days=2):
         for _ in range(3):
             hour = random.randint(2, 5)
             ts = day_start + hour * 3600 + random.randint(0, 3599)
-            duration = random.randint(60 * 60, 180 * 60)  # 1-3 hours (long)
+            duration = random.randint(60 * 60, 180 * 60)
 
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "auth_ok", ts),
             )
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "ssh_connected", ts + 3),
             )
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "ssh_disconnected", ts + 3 + duration),
             )
@@ -136,19 +128,18 @@ def inject_anomalous_sessions(conn, user_id, container_id, days=2):
         for _ in range(15):
             hour = random.randint(10, 14)
             ts = day_start + hour * 3600 + random.randint(0, 3599)
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "auth_ok", ts),
             )
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "ssh_connected", ts + 2),
             )
-            conn.execute(
+            conn.execute_update(
                 "INSERT INTO sessions(user_id, container_id, event_type, timestamp) VALUES(?,?,?,?)",
                 (user_id, container_id, "ssh_disconnected", ts + 2 + random.randint(30, 180)),
             )
-    conn.commit()
 
 
 def generate_history_files(users, with_suspicious=False, with_injection=False):
@@ -174,12 +165,11 @@ def generate_history_files(users, with_suspicious=False, with_injection=False):
 
 def clean_test_data(conn):
     """Remove all test data."""
-    conn.execute("DELETE FROM sessions WHERE user_id LIKE 'testuser%'")
-    conn.execute("DELETE FROM anomaly_reports WHERE user_id LIKE 'testuser%'")
-    conn.execute("DELETE FROM command_reports WHERE user_id LIKE 'testuser%'")
-    conn.execute("DELETE FROM containers WHERE user_id LIKE 'testuser%'")
-    conn.execute("DELETE FROM users WHERE user_id LIKE 'testuser%'")
-    conn.commit()
+    conn.execute_update("DELETE FROM sessions WHERE user_id LIKE 'testuser%'")
+    conn.execute_update("DELETE FROM anomaly_reports WHERE user_id LIKE 'testuser%'")
+    conn.execute_update("DELETE FROM command_reports WHERE user_id LIKE 'testuser%'")
+    conn.execute_update("DELETE FROM containers WHERE user_id LIKE 'testuser%'")
+    conn.execute_update("DELETE FROM users WHERE user_id LIKE 'testuser%'")
 
     # Clean history dirs
     if os.path.exists(HOMES_DIR):

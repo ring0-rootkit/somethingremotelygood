@@ -111,30 +111,21 @@ def unmount_volume(container_id):
 
 
 def call_llm(prompt):
-    """Send prompt to LLM API and return response text."""
-    if not LLM_API_KEY:
-        print("ERROR: LLM_API_KEY environment variable not set.")
-        sys.exit(1)
-
+    """Send prompt to Ollama API and return response text."""
     if requests is None:
         print("ERROR: 'requests' package not installed. Run: pip install requests")
         sys.exit(1)
 
-    headers = {
-        "x-api-key": LLM_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
     body = {
         "model": LLM_MODEL,
-        "max_tokens": 2048,
         "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
     }
 
-    resp = requests.post(LLM_API_URL, headers=headers, json=body, timeout=60)
+    resp = requests.post(LLM_API_URL, json=body, timeout=120)
     resp.raise_for_status()
     data = resp.json()
-    return data["content"][0]["text"]
+    return data["message"]["content"]
 
 
 def analyze_anomaly(anomaly_id):
@@ -215,13 +206,12 @@ def list_reports():
     """Print all command analysis reports."""
     conn = get_connection()
     try:
-        cursor = conn.execute(
+        rows = conn.execute(
             "SELECT r.report_id, r.anomaly_report_id, r.user_id, r.container_id, "
             "r.risk_level, datetime(r.created_at, 'unixepoch'), "
             "substr(r.analysis_text, 1, 100) "
             "FROM command_reports r ORDER BY r.created_at DESC"
         )
-        rows = cursor.fetchall()
         if not rows:
             print("No command analysis reports.")
             return

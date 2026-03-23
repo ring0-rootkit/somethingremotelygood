@@ -198,7 +198,7 @@ analyze-anomaly: FORCE
 		echo "Usage: make analyze-anomaly REPORT_ID=<id>"; \
 		exit 1; \
 	fi
-	sudo DB_PASSWORD=123 LLM_API_KEY=$${LLM_API_KEY} python3 src/ai/command_analysis.py --anomaly-id "$(REPORT_ID)"
+	sudo DB_PASSWORD=123 python3 src/ai/command_analysis.py --anomaly-id "$(REPORT_ID)"
 
 list-anomalies: FORCE
 	sudo DB_PASSWORD=123 python3 src/ai/anomaly_detect.py --list-pending

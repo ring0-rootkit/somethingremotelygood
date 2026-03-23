@@ -82,8 +82,10 @@ User behavior monitoring with two AI stages:
 
 Install Python dependencies:
 ```sh
-pip install pysqlcipher3 requests
+pip install requests
 ```
+
+The `sqlcipher` CLI tool must be available (installed via `make setup`). No Python C extensions needed.
 
 Session events are logged automatically by the manager when users connect/disconnect.
 
@@ -120,10 +122,10 @@ make list-anomalies-db                   # Same via C manager
 
 ### Command Analysis (AI 2)
 
-Admin-triggered LLM analysis of shell history for a flagged anomaly. Requires `LLM_API_KEY`.
+Admin-triggered LLM analysis of shell history for a flagged anomaly. Requires Ollama running locally with `qwen2.5:3b`.
 
 ```sh
-export LLM_API_KEY=sk-ant-...
+ollama pull qwen2.5:3b
 make analyze-anomaly REPORT_ID=1
 ```
 
@@ -171,9 +173,8 @@ make review-anomaly REPORT_ID=1 STATUS=reviewed
 |----------|---------|-------------|
 | `DB_PASSWORD` | (required) | SQLCipher database password |
 | `DB_PATH` | `encrypted_users.db` | Path to database file |
-| `LLM_API_KEY` | (required for AI 2) | Anthropic API key |
-| `LLM_API_URL` | `https://api.anthropic.com/v1/messages` | LLM API endpoint |
-| `LLM_MODEL` | `claude-sonnet-4-20250514` | LLM model for command analysis |
+| `LLM_API_URL` | `http://localhost:11434/api/chat` | Ollama API endpoint |
+| `LLM_MODEL` | `qwen2.5:3b` | Ollama model for command analysis |
 | `ANOMALY_WINDOW_DAYS` | `30` | Baseline window for anomaly detection |
 | `ANOMALY_Z_THRESHOLD` | `2.5` | Z-score threshold for anomaly flagging |
 | `HOMES_DIR` | `./homes` | Encrypted home directory path |
