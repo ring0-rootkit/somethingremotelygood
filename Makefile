@@ -226,5 +226,14 @@ clean-baseline: FORCE
 generate-test-data: FORCE
 	sudo DB_PASSWORD=123 python3 src/ai/generate_test_data.py $(ARGS)
 
+generate-pdf: FORCE
+	@if [ -z "$(JSON)" ]; then \
+		echo "Usage: make generate-pdf JSON=reports/report_file.json"; \
+		echo "Available reports:"; \
+		ls -1 reports/*.json 2>/dev/null || echo "  (none)"; \
+		exit 1; \
+	fi
+	python3 src/ai/generate_report_pdf.py "$(JSON)"
+
 clean-test-data: FORCE
 	sudo DB_PASSWORD=123 python3 src/ai/generate_test_data.py --clean

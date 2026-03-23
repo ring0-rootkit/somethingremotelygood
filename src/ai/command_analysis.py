@@ -7,9 +7,10 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 
 sys.path.insert(0, "src")
-from ai.config import HOMES_DIR, LLM_API_KEY, LLM_API_URL, LLM_MODEL
+from ai.config import HOMES_DIR, LLM_API_URL, LLM_MODEL
 from ai.db_access import (
     get_anomaly_report,
     get_connection,
@@ -23,6 +24,8 @@ try:
     import requests
 except ImportError:
     requests = None
+
+REPORTS_DIR = "./reports"
 
 
 def read_shell_history(mount_point, user_id):
@@ -50,17 +53,14 @@ def mount_volume(container_id, container_key):
     mapper_name = f"somethingremotelygood_{container_id}"
     mount_point = os.path.join(HOMES_DIR, f"{container_id}_mnt")
 
-    # Check if already mounted
     if os.path.ismount(mount_point):
         return mount_point
 
-    # Write key to temp file
     key_fd, key_path = tempfile.mkstemp()
     try:
         os.write(key_fd, container_key)
         os.close(key_fd)
 
-        # Setup loop device
         result = subprocess.run(
             ["losetup", "--find", "--show", img_path],
             capture_output=True, text=True
@@ -69,7 +69,6 @@ def mount_volume(container_id, container_key):
             return None
         loop_dev = result.stdout.strip()
 
-        # Open LUKS
         result = subprocess.run(
             ["cryptsetup", "open", "--type", "luks", "--key-file", key_path, loop_dev, mapper_name],
             capture_output=True, text=True
@@ -100,7 +99,6 @@ def unmount_volume(container_id):
 
     subprocess.run(["umount", mount_point], capture_output=True)
     subprocess.run(["cryptsetup", "close", mapper_name], capture_output=True)
-    # Find and detach loop device
     result = subprocess.run(
         ["losetup", "-j", os.path.join(HOMES_DIR, f"{container_id}.img")],
         capture_output=True, text=True
@@ -128,6 +126,41 @@ def call_llm(prompt):
     return data["message"]["content"]
 
 
+def save_json_report(anomaly_id, anomaly_report, user_id, container_id, analysis_result, commands):
+    """Save a detailed JSON report file to reports/ directory."""
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+
+    now = datetime.now(timezone.utc)
+    report = {
+        "report_metadata": {
+            "generated_at": now.isoformat(),
+            "anomaly_report_id": anomaly_id,
+            "model": LLM_MODEL,
+        },
+        "user": {
+            "user_id": user_id,
+            "container_id": container_id,
+        },
+        "anomaly": {
+            "type": anomaly_report.get("anomaly_type", "unknown"),
+            "severity": anomaly_report.get("severity", "unknown"),
+            "summary": anomaly_report.get("summary", ""),
+            "details": json.loads(anomaly_report.get("details_json", "[]")),
+        },
+        "command_analysis": analysis_result,
+        "commands_analyzed": len(commands),
+        "command_history": commands,
+    }
+
+    filename = f"report_anomaly{anomaly_id}_{user_id}_{now.strftime('%Y%m%d_%H%M%S')}.json"
+    filepath = os.path.join(REPORTS_DIR, filename)
+    with open(filepath, "w") as f:
+        json.dump(report, f, indent=2, ensure_ascii=False)
+
+    print(f"    → JSON report saved to {filepath}")
+    return filepath
+
+
 def analyze_anomaly(anomaly_id):
     """Run command analysis for a specific anomaly report."""
     conn = get_connection()
@@ -140,7 +173,6 @@ def analyze_anomaly(anomaly_id):
         user_id = report["user_id"]
         print(f"Analyzing commands for user '{user_id}' (anomaly #{anomaly_id}: {report['anomaly_type']})")
 
-        # Get container IDs from recent sessions
         details = json.loads(report["details_json"])
         sessions = get_sessions(user_id=user_id, conn=conn)
         container_ids = list(set(
@@ -163,7 +195,6 @@ def analyze_anomaly(anomaly_id):
             mount_point = mount_volume(container_id, container_key)
             needs_unmount = mount_point is not None
             if not mount_point:
-                # Check for test data directory (from generate_test_data.py --with-history)
                 test_dir = os.path.join(HOMES_DIR, f"test_{user_id}")
                 if os.path.isdir(test_dir):
                     print(f"    Using test history from {test_dir}")
@@ -179,9 +210,9 @@ def analyze_anomaly(anomaly_id):
                     continue
 
                 print(f"    Found {len(commands)} commands, sanitizing...")
-                encoded, filtered = sanitize_commands(commands)
+                formatted, filtered = sanitize_commands(commands)
 
-                prompt = build_analysis_prompt(encoded, user_id, report["summary"])
+                prompt = build_analysis_prompt(formatted, user_id, report["summary"])
                 print(f"    Sending to LLM for analysis...")
                 response = call_llm(prompt)
 
@@ -193,15 +224,18 @@ def analyze_anomaly(anomaly_id):
                         "summary": "LLM response failed schema validation",
                         "findings": [],
                         "recommendation": "Manual review required",
+                        "raw_response": response[:500],
                     }
 
-                report_id = insert_command_report(
+                db_report_id = insert_command_report(
                     anomaly_id, user_id, container_id,
                     json.dumps(result), result["risk_level"],
                     conn=conn,
                 )
                 print(f"    Result: {result['risk_level'].upper()} — {result['summary']}")
-                print(f"    → Saved as command report #{report_id}")
+                print(f"    → Saved as command report #{db_report_id}")
+
+                save_json_report(anomaly_id, report, user_id, container_id, result, filtered)
             finally:
                 if needs_unmount:
                     unmount_volume(container_id)
