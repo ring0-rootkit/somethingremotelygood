@@ -77,6 +77,8 @@ def analyze_user(user_id, conn):
     if len(baseline_sessions) < 5:
         return None  # Not enough data for baseline
 
+    if baseline_sessions:
+        print(f"  DEBUG: first session row keys={list(baseline_sessions[0].keys())} vals={list(baseline_sessions[0].values())}")
     baseline_connects = [s for s in baseline_sessions if s["event_type"] == "ssh_connected"]
     recent_connects = [s for s in recent_sessions if s["event_type"] == "ssh_connected"]
 
@@ -170,6 +172,8 @@ def list_pending():
     if not reports:
         print("No pending anomaly reports.")
         return
+    if reports:
+        print(f"  DEBUG: first report row keys={list(reports[0].keys())} vals={list(reports[0].values())[:3]}")
     print(f"{'ID':<6} {'User':<12} {'Type':<16} {'Severity':<8} {'Created':<20} Summary")
     print("-" * 90)
     for r in reports:
