@@ -8,3 +8,6 @@ homes/
 *.o
 logs
 **/.pio
+
+manager.log
+src/ai/__pycache__/
