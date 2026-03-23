@@ -150,21 +150,12 @@ def main():
 
     # Annotation
     doc.add_paragraph(
-        'The architecture and implementation of a system for secure remote access '
-        'to containerized environments with hardware-based cryptographic key storage on '
-        'an ESP32-C3 microcontroller and a two-level intelligent user behavior analysis '
-        'subsystem are presented. The system provides generation, encryption, '
-        'and usage of Ed25519 keys directly on the microcontroller, eliminating '
-        'the storage of private keys on the user\'s computer. An SSH agent protocol '
-        'is implemented via a serial bridge in Python, a Go client for authentication, and '
-        'a C manager for LXD container management with LUKS volume encryption. '
-        'To detect anomalous behavior, statistical analysis of session patterns '
-        'is employed (z-score on time-of-day, frequency, duration), while for '
-        'in-depth investigation, command history analysis is performed by a local '
-        'language model (Ollama/Qwen2.5) with five-layer prompt injection defense. '
-        'Testing results confirm the correctness of cryptographic operations, '
-        'acceptable signing performance (under 250 ms), and effectiveness of '
-        'anomaly detection.',
+        'A system for secure remote access to containerized environments with '
+        'hardware-based Ed25519 key storage on an ESP32-C3 microcontroller and '
+        'two-level user behavior analysis is presented. The first level performs '
+        'statistical anomaly detection in session patterns (z-score), the second '
+        'analyzes command history using a local Qwen2.5 language model with '
+        'five-layer prompt injection defense.',
         style='Аннотация'
     )
 
@@ -172,8 +163,8 @@ def main():
     add_keywords(
         doc,
         'hardware key storage; ESP32; Ed25519; SSH agent; '
-        'container virtualization; LXD; LUKS; cryptography; '
-        'user behavior analysis; anomaly detection; LLM; Ollama.'
+        'container virtualization; LXD; LUKS; '
+        'anomaly detection; LLM; Ollama.'
     )
 
     print(f'[*] Saving to {OUTPUT_PATH}...')
