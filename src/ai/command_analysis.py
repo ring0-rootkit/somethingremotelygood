@@ -122,7 +122,7 @@ def call_llm(prompt):
         "stream": False,
     }
 
-    resp = requests.post(LLM_API_URL, json=body, timeout=120)
+    resp = requests.post(LLM_API_URL, json=body, timeout=600)
     resp.raise_for_status()
     data = resp.json()
     return data["message"]["content"]
