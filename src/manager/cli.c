@@ -2,7 +2,6 @@
 #include "database.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 void usage(const char *prog) {
     fprintf(stderr, "Usage:\n");
