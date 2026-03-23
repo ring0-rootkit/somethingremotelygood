@@ -1,0 +1,64 @@
+  graph TD
+      subgraph "C Manager (server.c)"
+          E1[auth_ok] --> LOG[db_log_session_event]
+          E2[auth_fail] --> LOG
+          E3[ssh_connected] --> LOG
+          E4[ssh_disconnected] --> LOG
+          E5[timeout] --> LOG
+          LOG --> DB[(SQLCipher DB<br/>sessions table)]
+      end
+
+      subgraph "AI 1 — Statistical Anomaly Detection"
+          DB --> |"30-day baseline"| BASELINE[Compute Baseline<br/>per user]
+          DB --> |"last 24h"| RECENT[Recent Sessions]
+          BASELINE --> M1[Time-of-Day<br/>hourly buckets<br/>< 2% threshold]
+          BASELINE --> M2[Session Frequency<br/>sessions/day<br/>z-score]
+          BASELINE --> M3[Session Duration<br/>connect/disconnect pairs<br/>z-score]
+          RECENT --> M1
+          RECENT --> M2
+          RECENT --> M3
+          M1 --> SCORE{Max z-score?}
+          M2 --> SCORE
+          M3 --> SCORE
+          SCORE --> |"z > 2.5"| LOW[severity: low]
+          SCORE --> |"z > 3.5"| MED[severity: medium]
+          SCORE --> |"z > 4.5"| HIGH[severity: high]
+          LOW --> COMPOSITE{Multiple<br/>anomaly types?}
+          MED --> COMPOSITE
+          HIGH --> COMPOSITE
+          COMPOSITE --> |yes| ESCALATE[Escalate severity +1<br/>type: composite]
+          COMPOSITE --> |no| SAVE_ANOMALY
+          ESCALATE --> SAVE_ANOMALY[Save to<br/>anomaly_reports]
+      end
+
+      subgraph "AI 2 — LLM Command Analysis"
+          SAVE_ANOMALY --> |"admin triggers"| FETCH[Fetch anomaly report]
+          FETCH --> CONTAINERS[Get user containers]
+          CONTAINERS --> MOUNT[Mount LUKS volume<br/>with container key]
+          MOUNT --> READ_HIST[Read .ash_history<br/>.bash_history<br/>.zsh_history]
+          READ_HIST --> UNMOUNT[Unmount volume]
+          UNMOUNT --> SANITIZE
+
+          subgraph "5-Layer Sanitization"
+              SANITIZE[Layer 1: Numbered format<br/>with BEGIN/END markers]
+              SANITIZE --> FILTER[Layer 2: Regex filter<br/>injection patterns<br/>→ FILTERED tag]
+              FILTER --> LIMIT[Layer 3: Limit<br/>500 lines × 200 chars]
+              LIMIT --> PROMPT[Layer 4: Structured prompt<br/>DATA not instructions]
+              PROMPT --> VALIDATE[Layer 5: JSON schema<br/>validation of response]
+          end
+
+          PROMPT --> LLM[Ollama / Qwen2.5:3b<br/>local inference]
+          LLM --> VALIDATE
+          VALIDATE --> |valid| RESULT[risk_level + summary<br/>+ findings + recommendation]
+          VALIDATE --> |invalid| FALLBACK[Mark as suspicious<br/>manual review required]
+          RESULT --> SAVE_CMD[Save to command_reports]
+          RESULT --> SAVE_JSON[Save JSON report<br/>to reports/]
+          SAVE_JSON --> GEN_PDF[Generate PDF<br/>with risk badges]
+      end
+
+      style DB fill:#f9f,stroke:#333
+      style LLM fill:#bbf,stroke:#333
+      style ESCALATE fill:#fbb,stroke:#333
+      style HIGH fill:#f66,stroke:#fff,color:#fff
+      style MED fill:#fa0,stroke:#333
+      style LOW fill:#ff0,stroke:#333
