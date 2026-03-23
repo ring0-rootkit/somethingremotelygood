@@ -1,0 +1,138 @@
+[
+  {
+    "file": "src/manager/main.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/main.c",
+      "-o",
+      "src/manager/main.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/main.o"
+  },
+  {
+    "file": "src/manager/database.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/database.c",
+      "-o",
+      "src/manager/database.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/database.o"
+  },
+  {
+    "file": "src/manager/crypto.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/crypto.c",
+      "-o",
+      "src/manager/crypto.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/crypto.o"
+  },
+  {
+    "file": "src/manager/utils.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/utils.c",
+      "-o",
+      "src/manager/utils.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/utils.o"
+  },
+  {
+    "file": "src/manager/lxd.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/lxd.c",
+      "-o",
+      "src/manager/lxd.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/lxd.o"
+  },
+  {
+    "file": "src/manager/volume.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/volume.c",
+      "-o",
+      "src/manager/volume.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/volume.o"
+  },
+  {
+    "file": "src/manager/server.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/server.c",
+      "-o",
+      "src/manager/server.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/server.o"
+  },
+  {
+    "file": "src/manager/cli.c",
+    "arguments": [
+      "gcc",
+      "-c",
+      "src/manager/cli.c",
+      "-o",
+      "src/manager/cli.o",
+      "-I",
+      "src/manager",
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ],
+    "directory": "/home/r0/personal/somethinigremotelygood",
+    "output": "src/manager/cli.o"
+  }
+]
