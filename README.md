@@ -1,295 +1,162 @@
-# SSH Hardware Security Module (ESP32)
+# somethingremotelygood
 
-This project uses an ESP32 as a hardware security module (like a YubiKey) for SSH authentication. The ESP32 stores an Ed25519 private key securely and signs authentication challenges over serial.
+**Secure remote access to containerized environments with hardware key storage and AI-powered behavior monitoring.**
 
----
-
-## Quick Start - ESP32 SSH Agent Workflow
-
-### Prerequisites
-- ESP32 board (dev module)
-- USB cable for programming
-- PlatformIO (`pip install platformio`) or Arduino CLI
-
-### Step 1: Upload ESP32 Firmware
-```sh
-# Connect ESP32 via USB, then:
-make esp32-upload
-```
-
-### Step 2: Generate Key on ESP32
-```sh
-# This generates a new Ed25519 key stored in ESP32 flash
-make esp32-keygen
-
-# Or directly:
-python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --generate
-```
-
-### Step 3: Get Public Key (for server registration)
-```sh
-make esp32-get-key
-
-# Or directly:
-python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key
-```
-
-### Step 4: Register User with Manager
-```sh
-# Register the ESP32's public key with the manager
-make esp32-register USER=bob CONTAINER=bob
-```
-
-### Step 5: Start Agent Bridge
-```sh
-# In a separate terminal, start the SSH agent bridge:
-make agent-bridge
-
-# This creates a Unix socket at /tmp/esp32-agent.sock
-```
-
-### Step 6: Connect Using ESP32 Agent
-```sh
-# Connect to the container using the ESP32 for signing
-make client-run-agent
-```
-
----
-
-## Direct Command Reference
-
-### ESP32 Key Tool
-```sh
-# Generate new key on ESP32
-python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --generate
-
-# Get public key from ESP32 (outputs hex)
-python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --get-key
-
-# Sign a challenge (for testing)
-python3 wrapper/esp32_keytool.py --port /dev/ttyUSB0 --sign <hex-challenge>
-```
-
-### SSH Agent Bridge
-```sh
-# Start bridge (creates SSH_AUTH_SOCK at /tmp/esp32-agent.sock)
-python3 wrapper/esp32_agent_bridge.py /dev/ttyUSB0
-
-# With custom socket path
-python3 wrapper/esp32_agent_bridge.py /dev/ttyUSB0 -s /tmp/my-agent.sock
-
-# Test agent
-SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh-add -l
-SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh user@host
-```
-
-### Go Client with ESP32 Agent
-```sh
-# Build client
-make client
-
-# Run with ESP32 agent
-./build/client -agent /tmp/esp32-agent.sock localhost 5555 bob bob
-```
-
----
+An ESP32-C3 microcontroller serves as a hardware security module — Ed25519 private keys are generated and stored on-device, never leaving the chip. Users authenticate via challenge-response through an SSH agent bridge, gaining access to isolated LXD containers with LUKS-encrypted home volumes. A two-level AI subsystem monitors user sessions: statistical anomaly detection flags unusual patterns, and a local LLM (Qwen2.5 via Ollama) analyzes command history for threats.
 
 ## Architecture
 
 ```
-┌─────────────┐    Serial (USB)    ┌─────────────┐
-│   ESP32     │◄──────────────────►│   Bridge    │
-│ (HSM)       │                    │  (Python)   │
-│             │                    │             │
-│ Ed25519 Key │                    │ Unix Socket │
-│ + Signing   │                    │ (ssh-agent) │
-└─────────────┘                    └──────┬──────┘
-                                           │
-                                           ▼
-                                    ┌─────────────┐
-                                    │  SSH Client │
-                                    │   (Go)      │
-                                    └─────────────┘
+ESP32-C3 ──serial──▶ Python Bridge ──SSH agent──▶ Go Client ──TCP 5555──▶ C Manager
+  Ed25519 keys          Unix socket             challenge-response       SQLCipher DB
+  NVS + TRNG            /tmp/esp32-agent.sock                            LXD + LUKS
+
+                                                                            │
+                                                                            ▼
+                                                                     Python AI Layer
+                                                                     anomaly detection
+                                                                     command analysis
 ```
 
----
+| Component | Language | Description |
+|-----------|----------|-------------|
+| **ESP32 Firmware** | C++ | Ed25519 key generation/signing, password-protected NVS storage, serial protocol |
+| **Agent Bridge** | Python | Translates serial protocol to SSH agent (Unix socket), handles lock/unlock |
+| **Client** | Go | Challenge-response auth with manager, SSH session to container |
+| **Manager** | C | TCP server, SQLCipher user DB, LXD container lifecycle, LUKS volume management |
+| **AI Analysis** | Python | Statistical anomaly detection (AI 1) + LLM command analysis (AI 2) |
 
-# Original Documentation
+## Quick Start
 
-## Build
-**Manager:**
-```sh
-make manager
-```
-Usage:
-```sh
-make env
-./manager
-```
-**Client:**
-```sh
-make client
-```
-Usage:
-```sh
-./client
-```
+```bash
+# Install dependencies (Ubuntu/Debian)
+make setup
 
-## Overview
+# Generate keys (software RSA — or use ESP32 below)
+make keygen
 
-## Core idea: 
-Host runs a single hypervisor/container host. Each worker gets a container stored in encrypted format that is only decrypted when the worker presents their USB token. Admins provision containers and manage keys via an Database. Worker access is via SSH or RDP using keys/certs stored on their USB token (YubiKey or smartcard PIV).
+# Build manager and client
+make all
 
-<img width="1194" height="1408" alt="image" src="https://github.com/user-attachments/assets/510df374-7715-4ee2-93c2-6123fe8e4af5" />
+# Register a user
+make register-user USER=bob CONTAINER=bob_container
 
+# Run manager
+make manager-run
 
-## Components:
-### Hypervisor / manager:
-Docker with per container encryption?
-> NOTE: I'll use docker first then might try implementing my own hypervisor using libvirt?
-
-### Unlocking:
-Store keys in encrypted SQLite database. Password for decrypting database is stored as ENV variable on host.
-
-### User authentication to the VM:
-I'll start with SSH only, (and possibly RDP support if there's enough time)
-
-### Short-lived access & privileged operations:
-Tokens with userid and privelege id are stored in SQLite databse. When user tries to log in database is decrypted and user token is compared to the one stored in database (by userid), if they match docker will be decrypted using password stored in database and new token will be generated and sent to user.
-
-## Requirements:
-- Runs on a single server
-- Admins create containers
-- Workers access only their container
-- All containers encrypted with separate keys
-- Workers connect via USB key
-
-# Structure
-
-## Actors:
-- _User_: Ability to access their VM with USB key.
-- _Admin_: Ability to create/delete VMs.
-- _Superuser_: Ability to monitor containers, access to master server, access to master key for SQLite.
-
-# Implementation
-
-## USB key code:
- - detect USB
- - send hello
- - receive user_id
- - Kernel sends random challenge
- - USB device signs challenge with private key
- - Kernel verifies signature with stored public key
-
-## Steps
- - [] write helper scripts for docker
- - [] write 'manager' code to communicate with client (TCP)
- - [] integrate 'manager' with sqlite
- - [] setup sqlite with encryption
- - [] write client code for communication
- - [] implement usb token
-
-
-```mermaid
-flowchart TD
-    subgraph A [Фаза 1: Подготовка и проверки]
-        A1[Администратор запускает<br>./manager add-container<br>container_id user_id keyfile]
-        
-        A1 --> A2[Загрузка мастер-пароля<br>из переменной DB_PASSWORD]
-        A2 --> A3[Открытие зашифрованной БД SQLCipher]
-        A3 --> A4[Проверка существования<br>пользователя в таблице users]
-        
-        A4 --> A5{Пользователь существует?}
-        A5 -->|Нет| A6[Ошибка: пользователь не найден]
-        A5 -->|Да| A7[Чтение файла с ключом<br>контейнера container_key.bin]
-    end
-    
-    subgraph B [Фаза 2: Сохранение и завершение]
-        B1[Выполнение SQL-запроса<br>INSERT OR REPLACE INTO containers]
-        
-        subgraph B1_Detail [Структура данных]
-            B1a[container_id: уникальный ID]
-            B1b[user_id: привязка к пользователю]
-            B1c[container_key: BLOB с ключом<br>в открытом виде]
-        end
-        
-        B1 --> B2[Ключ сохраняется в<br>зашифрованной БД SQLCipher]
-        B2 --> B3[Запись успешно добавлена<br>в таблицу containers]
-        B3 --> B4[Конец операции провизионирования]
-    end
-    
-    A7 --> B1
-    
-    style A6 fill:#ffebee
-    style B4 fill:#e8f5e8
+# Connect (in another terminal)
+make client-run
 ```
 
-```mermaid
-flowchart TD
-    A[Пользователь запускает клиент] --> B[TCP-соединение с демоном]
-    B --> C[Передача user_id]
-    C --> D[Challenge-Response аутентификация]
-    
-    subgraph D [Аутентификация]
-        D1[Демон генерирует challenge] --> D2[Клиент подписывает приватным ключом]
-        D2 --> D3[Демон проверяет подпись]
-    end
-    
-    D --> E{Аутентификация успешна?}
-    E -- Нет --> F[Отказ в доступе]
-    E -- Да --> G[Демон вызывает C-менеджер]
-    
-    G --> H[Получение SSH-порта контейнера]
-    H --> I[Передача порта клиенту]
-    I --> J[Автоматическое SSH-подключение]
-    J --> K[Пользователь в рабочей среде]
+### ESP32 Hardware Key Flow
+
+```bash
+# Flash firmware
+make esp32-upload
+
+# Generate key on device (with optional password)
+make esp32-keygen
+
+# Start SSH agent bridge
+make agent-bridge
+
+# Register ESP32 key with manager
+make esp32-register USER=bob CONTAINER=bob_container
+
+# Connect using hardware key
+make client-run-agent
 ```
 
-```mermaid
-flowchart TD
-    A[Начало работы C-менеджера]
-    A --> B[Получение параметров от демона:<br>ключ контейнера, user_id, container_id]
-    B --> C[Открытие зашифрованного образа контейнера<br>с использованием ключа]
-    C --> D[Монтирование расшифрованной<br>файловой системы]
-    D --> E[Запуск Docker-контейнера,<br>связывая его с ФС]
-    E --> F[Создание учётной записи<br>пользователя внутри контейнера]
-    F --> G[Добавление SSH-ключа пользователя<br>в authorized_keys]
-    G --> H[Определение порта хоста,<br>на который проброшен SSH-порт контейнера]
-    H --> I[Возврат порта демону]
-    I --> Z[Завершение работы C-менеджера]
+## AI Behavior Analysis
+
+Session events (`auth_ok`, `auth_fail`, `ssh_connected`, `ssh_disconnected`, `timeout`) are logged by the C manager into the encrypted database.
+
+### AI 1 — Statistical Anomaly Detection
+
+Computes per-user baselines (30-day window) across three metrics:
+- **Time-of-day** — hourly connection distribution (flags < 2% activity hours)
+- **Session frequency** — connections per day (z-score)
+- **Session duration** — connect/disconnect pair durations (z-score)
+
+Severity: z > 2.5 → low, z > 3.5 → medium, z > 4.5 → high. Multiple anomaly types escalate to `composite`.
+
+```bash
+make anomaly-detect              # all users
+make anomaly-detect-user USER=bob
+make list-anomalies              # pending reports
 ```
 
+### AI 2 — LLM Command Analysis
 
-changelog:
+Admin-triggered deep analysis of shell history from LUKS-encrypted volumes. Commands pass through 5-layer sanitization (numbered format, regex injection filter, length limits, data boundary markers, JSON schema validation) before being sent to a local Qwen2.5:3b model via Ollama.
 
-**2026-02-14:**
-- Implemented encrypted home directories using LUKS/dm-crypt
-  - Created `volume.c/h` for managing encrypted volumes
-  - Home directories are stored in `./homes/<container_id>.img` (100MB encrypted loopback files)
-  - LUKS encryption with container key, decrypted on host and bind-mounted to container
-  - Automatic cleanup when container stops (umount + cryptsetup close)
-  - Background thread monitors containers every 10s (configurable), closes volumes for stopped containers
-  
-- Fixed SSH authentication for encrypted volumes
-  - SSH keys now set up directly in the encrypted volume (host side) instead of container overlay
-  - Added `docker_setup_ssh_in_volume()` to create `.ssh/authorized_keys` in the mounted volume
-  - Added `docker_fix_ssh_permissions()` to run `chown` inside container for proper ownership
-  - Keys persist across container restarts since they're in the encrypted volume
-  
-- Added automatic container lifecycle management
-  - Manager waits for user to connect via SSH (up to 60s timeout)
-  - Monitors SSH connections, detects when user disconnects
-  - Automatically stops container and encrypts home when no active SSH connections
-  - 30-minute timeout as fallback if connections don't close properly
-  
-- Added Makefile commands
-  - `make clean-containers` - stops and removes all Docker containers
-  - `make cleanup-luks` - closes stale LUKS devices and removes mount points
-  - `make register-user USER=<name> CONTAINER=<id>` - registers user and creates container
+```bash
+make analyze-anomaly REPORT_ID=1
+make list-reports
+make generate-pdf JSON=reports/report_file.json
+```
 
-- Added signal handling for graceful shutdown (SIGINT/SIGTERM)
-  - Cleans up all mounted encrypted volumes on shutdown
-  
-- Root privileges required for LUKS operations
-  - Manager must run with sudo for cryptsetup to work
+### Testing with Synthetic Data
 
+```bash
+make generate-test-data ARGS="--users 5 --with-history --inject-malicious"
+make anomaly-detect
+make analyze-anomaly REPORT_ID=1
+make clean-test-data
+```
+
+## Project Structure
+
+```
+src/
+├── manager/          C server — auth, containers, LUKS, session logging
+│   ├── server.c        TCP handler, challenge-response protocol
+│   ├── database.c      SQLCipher schema (users, containers, sessions, reports)
+│   ├── crypto.c        Ed25519/RSA signature verification
+│   ├── lxd.c           LXD REST API integration
+│   ├── volume.c        LUKS volume create/mount/unmount
+│   └── cli.c           Admin commands (list-anomalies, review-anomaly)
+├── client/           Go client — SSH agent integration, auth
+│   ├── main.go         CLI entry point
+│   ├── agent.go        SSH agent protocol
+│   └── ssh.go          SSH session management
+└── ai/               Python behavior analysis
+    ├── anomaly_detect.py      AI 1: z-score anomaly detection
+    ├── command_analysis.py    AI 2: LLM command history analysis
+    ├── sanitizer.py           5-layer prompt injection defense
+    ├── db_access.py           SQLCipher CLI wrapper
+    ├── generate_report_pdf.py PDF report generator
+    ├── generate_test_data.py  Synthetic data generator
+    └── generate_user_baseline.py  Baseline generator for real users
+
+esp32/ssh_agent/      ESP32-C3 firmware (PlatformIO + Arduino)
+wrapper/              Python serial tools (keytool, agent bridge)
+conference/           CTDA 2024 article generators (docx)
+```
+
+## Security Properties
+
+- Private keys never leave ESP32 (optional password encryption via PBKDF2 + AES-256-CBC)
+- Container data encrypted at rest (LUKS)
+- User database encrypted (SQLCipher)
+- Command history analyzed locally (Ollama) — no data sent to external services
+- 5-layer prompt injection defense for LLM analysis
+- All inter-component communication via local interfaces (serial, Unix socket, loopback)
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_PASSWORD` | — | SQLCipher database encryption key |
+| `LLM_API_URL` | `http://localhost:11434/api/chat` | Ollama API endpoint |
+| `LLM_MODEL` | `qwen2.5:3b` | LLM model for command analysis |
+| `ANOMALY_WINDOW_DAYS` | `30` | Baseline window for anomaly detection |
+| `ANOMALY_Z_THRESHOLD` | `2.5` | Z-score threshold for anomaly flagging |
+
+## Dependencies
+
+**System:** lxd, cryptsetup, gcc, sqlcipher, openssl, go, python3
+
+**Python:** fpdf2, requests
+
+**ESP32:** PlatformIO (pio)
