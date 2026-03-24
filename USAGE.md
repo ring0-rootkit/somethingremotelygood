@@ -73,21 +73,7 @@ make cleanup-luks        # Close stale LUKS devices
 ---
 
 ## AI Behavior Analysis
-
-User behavior monitoring with two AI stages:
-1. **Anomaly Detection** (statistical) — flags unusual time, frequency, or duration patterns
-2. **Command Analysis** (LLM) — admin-triggered analysis of shell history during anomalous periods
-
 ### Setup
-
-Install Python dependencies:
-```sh
-pip install requests
-```
-
-The `sqlcipher` CLI tool must be available (installed via `make setup`). No Python C extensions needed.
-
-Session events are logged automatically by the manager when users connect/disconnect.
 
 ### Generate Test Data
 
@@ -100,8 +86,6 @@ make clean-test-data                                     # Remove all test data
 ```
 
 ### Anomaly Detection (AI 1)
-
-Runs statistical analysis on session patterns (time-of-day, frequency, duration). No LLM needed.
 
 ```sh
 make anomaly-detect                      # Analyze all users
