@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Generate synthetic session data for testing anomaly detection."""
-
 import argparse
 import os
 import random
@@ -44,7 +42,6 @@ INJECTION_COMMANDS = [
 
 
 def generate_users(conn, n=5):
-    """Create test users with dummy keys."""
     users = []
     for i in range(n):
         user_id = f"testuser{i}"
@@ -65,7 +62,6 @@ def generate_users(conn, n=5):
 
 
 def generate_normal_sessions(conn, user_id, container_id, days=60):
-    """Generate normal session patterns for a user."""
     now = int(time.time())
     preferred_start = random.randint(7, 10)
     preferred_end = random.randint(16, 19)
@@ -99,7 +95,6 @@ def generate_normal_sessions(conn, user_id, container_id, days=60):
 
 
 def inject_anomalous_sessions(conn, user_id, container_id, days=2):
-    """Inject anomalous sessions in the last N days."""
     now = int(time.time())
 
     for day in range(days, 0, -1):
@@ -143,7 +138,6 @@ def inject_anomalous_sessions(conn, user_id, container_id, days=2):
 
 
 def generate_history_files(users, with_suspicious=False, with_injection=False):
-    """Generate fake shell history files."""
     os.makedirs(HOMES_DIR, exist_ok=True)
 
     for user_id, container_id in users:
@@ -164,7 +158,6 @@ def generate_history_files(users, with_suspicious=False, with_injection=False):
 
 
 def clean_test_data(conn):
-    """Remove all test data."""
     conn.execute_update("DELETE FROM sessions WHERE user_id LIKE 'testuser%'")
     conn.execute_update("DELETE FROM anomaly_reports WHERE user_id LIKE 'testuser%'")
     conn.execute_update("DELETE FROM command_reports WHERE user_id LIKE 'testuser%'")

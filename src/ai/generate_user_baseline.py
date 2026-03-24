@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Generate a normal usage baseline for a user so that a current session appears anomalous.
-
-Creates 30 days of sessions concentrated between 12h ago and 6h ago (in terms of
-hour-of-day), so any activity happening NOW falls outside the user's normal pattern.
-"""
-
 import argparse
 import random
 import sys

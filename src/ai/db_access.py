@@ -1,5 +1,3 @@
-"""Database access layer using sqlcipher CLI subprocess (no C extension needed)."""
-
 import subprocess
 from ai.config import DB_PASSWORD, DB_PATH
 
@@ -8,13 +6,10 @@ _SEP = "||<SEP>||"
 
 
 class SQLCipherConnection:
-    """Wrapper around the sqlcipher CLI for executing queries."""
-
     def __init__(self):
         self._closed = False
 
     def _run(self, sql):
-        """Execute SQL via sqlcipher CLI and return raw stdout."""
         if self._closed:
             raise RuntimeError("Connection is closed")
         commands = ".headers off\n"
@@ -35,7 +30,6 @@ class SQLCipherConnection:
         return result.stdout
 
     def execute(self, sql, params=None):
-        """Execute a query, return list of tuples."""
         if params:
             sql = self._bind_params(sql, params)
         output = self._run(sql)
@@ -59,7 +53,6 @@ class SQLCipherConnection:
         return rows
 
     def execute_insert(self, sql, params=None):
-        """Execute an INSERT and return the last rowid."""
         if params:
             sql = self._bind_params(sql, params)
         combined = sql.rstrip(";") + ";\nSELECT last_insert_rowid();"
@@ -74,14 +67,12 @@ class SQLCipherConnection:
         return None
 
     def execute_update(self, sql, params=None):
-        """Execute an UPDATE/DELETE statement."""
         if params:
             sql = self._bind_params(sql, params)
         self._run(sql)
 
     @staticmethod
     def _bind_params(sql, params):
-        """Replace ? placeholders with safely quoted parameter values."""
         result = []
         param_iter = iter(params)
         i = 0
@@ -108,7 +99,6 @@ class SQLCipherConnection:
 
 
 def get_connection():
-    """Return a new SQLCipher connection wrapper."""
     conn = SQLCipherConnection()
     rows = conn.execute("SELECT count(*) FROM sqlite_master")
     if not rows:
@@ -117,7 +107,6 @@ def get_connection():
 
 
 def get_sessions(user_id=None, since=None, conn=None):
-    """Get session events, optionally filtered by user and time."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -140,7 +129,6 @@ def get_sessions(user_id=None, since=None, conn=None):
 
 
 def get_all_users(conn=None):
-    """Get list of all user IDs."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -153,7 +141,6 @@ def get_all_users(conn=None):
 
 
 def insert_anomaly_report(user_id, anomaly_type, severity, summary, details_json, conn=None):
-    """Insert an anomaly report and return the report_id."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -169,7 +156,6 @@ def insert_anomaly_report(user_id, anomaly_type, severity, summary, details_json
 
 
 def get_pending_anomalies(conn=None):
-    """Get all pending anomaly reports."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -187,7 +173,6 @@ def get_pending_anomalies(conn=None):
 
 
 def insert_command_report(anomaly_id, user_id, container_id, analysis, risk_level, conn=None):
-    """Insert a command analysis report."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -203,7 +188,6 @@ def insert_command_report(anomaly_id, user_id, container_id, analysis, risk_leve
 
 
 def update_anomaly_status(report_id, status, conn=None):
-    """Update the status of an anomaly report."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -218,7 +202,6 @@ def update_anomaly_status(report_id, status, conn=None):
 
 
 def get_container_key(user_id, container_id, conn=None):
-    """Get the container encryption key blob as bytes."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()
@@ -236,7 +219,6 @@ def get_container_key(user_id, container_id, conn=None):
 
 
 def get_anomaly_report(report_id, conn=None):
-    """Get a specific anomaly report by ID."""
     own_conn = conn is None
     if own_conn:
         conn = get_connection()

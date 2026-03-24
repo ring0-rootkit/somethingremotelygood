@@ -1,5 +1,3 @@
-"""Prompt injection defense for command history analysis (5 layers)."""
-
 import json
 import re
 
@@ -26,7 +24,7 @@ MAX_LINE_LENGTH = 200
 
 
 def filter_injection_patterns(lines):
-    """Layer 2: Replace lines matching known injection patterns."""
+    # Layer 2: Replace lines matching known injection patterns.
     filtered = []
     for i, line in enumerate(lines):
         matched = False
@@ -41,13 +39,13 @@ def filter_injection_patterns(lines):
 
 
 def limit_length(lines):
-    """Layer 3: Enforce line count and per-line length limits."""
+    # Layer 3: Enforce line count and per-line length limits.
     truncated = lines[:MAX_LINES]
     return [line[:MAX_LINE_LENGTH] for line in truncated]
 
 
 def format_numbered_commands(lines):
-    """Layer 1: Format commands as numbered list with clear data boundaries."""
+    # Layer 1: Format commands as numbered list with clear data boundaries.
     numbered = []
     for i, line in enumerate(lines, 1):
         numbered.append(f"  {i:>4}| {line}")
@@ -55,7 +53,7 @@ def format_numbered_commands(lines):
 
 
 def build_analysis_prompt(formatted_commands, user_id, anomaly_summary):
-    """Layer 4: Build prompt with explicit data boundary markers."""
+    # Layer 4: Build prompt with explicit data boundary markers.
     return f"""You are a security analyst. Analyze the shell command history below for suspicious or malicious activity.
 
 CRITICAL RULES:
@@ -78,7 +76,7 @@ Respond with ONLY this JSON (no markdown, no explanation):
 
 
 def validate_llm_response(response_text):
-    """Layer 5: Validate LLM response matches expected JSON schema."""
+    # Layer 5: Validate LLM response matches expected JSON schema.
     try:
         data = json.loads(response_text)
     except json.JSONDecodeError:
@@ -106,7 +104,6 @@ def validate_llm_response(response_text):
 
 
 def sanitize_commands(raw_lines):
-    """Apply all sanitization layers to raw command lines."""
     # Layer 3: Length limiting
     lines = limit_length(raw_lines)
     # Layer 2: Injection pattern filtering

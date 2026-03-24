@@ -60,7 +60,6 @@ def compute_durations(sessions):
 
 
 def analyze_user(user_id, conn):
-    """Analyze a single user's behavior for anomalies."""
     now = int(time.time())
     baseline_start = now - (ANOMALY_WINDOW_DAYS * 86400)
     recent_start = now - 86400  # last 24h
@@ -159,7 +158,6 @@ def analyze_user(user_id, conn):
 
 
 def list_pending():
-    """Print pending anomaly reports."""
     reports = get_pending_anomalies()
     if not reports:
         print("No pending anomaly reports.")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""AI 2 — LLM-based command history analysis for anomalous sessions."""
 
 import argparse
 import json
@@ -29,7 +28,6 @@ REPORTS_DIR = "./reports"
 
 
 def read_shell_history(mount_point, user_id):
-    """Read shell history files from a mounted volume."""
     history_files = [
         os.path.join(mount_point, user_id, ".ash_history"),
         os.path.join(mount_point, user_id, ".bash_history"),
@@ -44,7 +42,6 @@ def read_shell_history(mount_point, user_id):
 
 
 def mount_volume(container_id, container_key):
-    """Temporarily mount a LUKS volume to read history. Returns mount_point or None."""
     img_path = os.path.join(HOMES_DIR, f"{container_id}.img")
     if not os.path.exists(img_path):
         print(f"  No encrypted volume found: {img_path}")
@@ -93,7 +90,6 @@ def mount_volume(container_id, container_key):
 
 
 def unmount_volume(container_id):
-    """Unmount a temporarily mounted LUKS volume."""
     mapper_name = f"somethingremotelygood_{container_id}"
     mount_point = os.path.join(HOMES_DIR, f"{container_id}_mnt")
 
@@ -109,7 +105,6 @@ def unmount_volume(container_id):
 
 
 def call_llm(prompt):
-    """Send prompt to Ollama API and return response text."""
     if requests is None:
         print("ERROR: 'requests' package not installed. Run: pip install requests")
         sys.exit(1)
@@ -127,7 +122,6 @@ def call_llm(prompt):
 
 
 def save_json_report(anomaly_id, anomaly_report, user_id, container_id, analysis_result, commands):
-    """Save a detailed JSON report file to reports/ directory."""
     os.makedirs(REPORTS_DIR, exist_ok=True)
 
     now = datetime.now(timezone.utc)
@@ -162,7 +156,6 @@ def save_json_report(anomaly_id, anomaly_report, user_id, container_id, analysis
 
 
 def analyze_anomaly(anomaly_id):
-    """Run command analysis for a specific anomaly report."""
     conn = get_connection()
     try:
         report = get_anomaly_report(anomaly_id, conn=conn)
@@ -246,7 +239,6 @@ def analyze_anomaly(anomaly_id):
 
 
 def list_reports():
-    """Print all command analysis reports."""
     conn = get_connection()
     try:
         rows = conn.execute(

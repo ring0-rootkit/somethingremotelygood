@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Generate a PDF report from a JSON analysis report file."""
-
 import argparse
 import json
 import os
