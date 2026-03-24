@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-ESP32 Key Tool - Direct interaction with ESP32 SSH Agent
-
-Usage:
-    python3 esp32_keytool.py --port /dev/ttyUSB0 --generate
-    python3 esp32_keytool.py --port /dev/ttyUSB0 --generate --password "mysecret"
-    python3 esp32_keytool.py --port /dev/ttyUSB0 --get-key
-    python3 esp32_keytool.py --port /dev/ttyUSB0 --unlock --password "mysecret"
-    python3 esp32_keytool.py --port /dev/ttyUSB0 --lock
-    python3 esp32_keytool.py --port /dev/ttyUSB0 --sign <hex-challenge>
-"""
-
 import os
 import sys
 import serial
@@ -79,7 +67,6 @@ def read_packet(ser, timeout=10.0):
 
 
 def generate_key(port, password=None, baudrate=115200):
-    """Generate key on ESP32, optionally encrypted with password"""
     try:
         ser = serial.Serial(port, baudrate, timeout=2.0)
         time.sleep(2)
@@ -119,7 +106,6 @@ def generate_key(port, password=None, baudrate=115200):
 
 
 def get_public_key(port, baudrate=115200):
-    """Get public key from ESP32"""
     try:
         ser = serial.Serial(port, baudrate, timeout=5.0)
         time.sleep(2)
@@ -148,7 +134,6 @@ def get_public_key(port, baudrate=115200):
 
 
 def unlock_agent(port, password, baudrate=115200):
-    """Unlock the ESP32 agent with password"""
     try:
         ser = serial.Serial(port, baudrate, timeout=5.0)
         time.sleep(2)
@@ -173,7 +158,6 @@ def unlock_agent(port, password, baudrate=115200):
 
 
 def lock_agent(port, baudrate=115200):
-    """Lock the ESP32 agent"""
     try:
         ser = serial.Serial(port, baudrate, timeout=5.0)
         time.sleep(2)
@@ -198,7 +182,6 @@ def lock_agent(port, baudrate=115200):
 
 
 def sign_challenge(port, challenge_hex, baudrate=115200):
-    """Sign a challenge with ESP32"""
     try:
         challenge = bytes.fromhex(challenge_hex)
     except ValueError:

@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-ESP32 SSH Agent Bridge
-
-Bridges SSH Agent protocol to ESP32 over serial (USB-to-UART).
-Works as a drop-in replacement for ssh-agent, usable with SSH_AUTH_SOCK.
-
-Usage:
-    python esp32_agent_bridge.py /dev/ttyACM0
-    SSH_AUTH_SOCK=/tmp/esp32-agent.sock ssh user@host
-"""
 
 import os
 import sys
@@ -68,7 +58,6 @@ class ESP32AgentBridge:
             return False
 
     def _serial_read_exact(self, n: int, timeout: float = 10.0) -> Optional[bytes]:
-        """Read exactly n bytes from serial with timeout"""
         if not self.serial:
             return None
         old_timeout = self.serial.timeout
@@ -80,7 +69,6 @@ class ESP32AgentBridge:
         return data
 
     def send_to_esp32(self, msg_type: int, data: bytes) -> bool:
-        """Send packet to ESP32: [type][3-byte-len][data]"""
         if not self.serial:
             return False
         try:
@@ -94,8 +82,6 @@ class ESP32AgentBridge:
             return False
 
     def recv_from_esp32(self, timeout: float = 10.0) -> Optional[Tuple[int, bytes]]:
-        """Read packet from ESP32: [4-byte-len][type+payload]
-        Skips any debug text (ASCII bytes) until a valid packet header is found."""
         try:
             deadline = time.time() + timeout
             header = b""
@@ -151,15 +137,12 @@ class ESP32AgentBridge:
             return None
 
     def _ssh_string(self, data: bytes) -> bytes:
-        """Encode bytes as SSH string (4-byte length prefix + data)"""
         return struct.pack(">I", len(data)) + data
 
     def _build_ed25519_key_blob(self, raw_pubkey: bytes) -> bytes:
-        """Build SSH wire format key blob from raw 32-byte ed25519 public key"""
         return self._ssh_string(b"ssh-ed25519") + self._ssh_string(raw_pubkey)
 
     def _extract_raw_key(self, ssh_key_blob: bytes) -> bytes:
-        """Extract raw ed25519 public key from SSH wire format key blob"""
         offset = 0
         type_len = struct.unpack(">I", ssh_key_blob[offset:offset + 4])[0]
         offset += 4 + type_len  # skip type string
@@ -168,11 +151,9 @@ class ESP32AgentBridge:
         return ssh_key_blob[offset:offset + key_len]
 
     def _build_ed25519_sig_blob(self, raw_sig: bytes) -> bytes:
-        """Build SSH wire format signature blob from raw 64-byte ed25519 signature"""
         return self._ssh_string(b"ssh-ed25519") + self._ssh_string(raw_sig)
 
     def unlock(self, password: bytes) -> bytes:
-        """Send UNLOCK command to ESP32, return SSH agent response"""
         with self.serial_lock:
             if not self.send_to_esp32(PROTOCOL_UNLOCK, password):
                 return self._create_failure()
@@ -190,7 +171,6 @@ class ESP32AgentBridge:
             return self._create_failure()
 
     def lock(self) -> bytes:
-        """Send LOCK command to ESP32, return SSH agent response"""
         with self.serial_lock:
             if not self.send_to_esp32(PROTOCOL_LOCK, b""):
                 return self._create_failure()
@@ -206,7 +186,6 @@ class ESP32AgentBridge:
             return self._create_failure()
 
     def request_identities(self) -> bytes:
-        """Request identities from ESP32 and format as SSH agent response"""
         with self.serial_lock:
             if not self.send_to_esp32(SSH_AGENTC_REQUEST_IDENTITIES, b""):
                 return self._create_failure()
@@ -248,7 +227,6 @@ class ESP32AgentBridge:
         return resp
 
     def sign_request(self, key_blob: bytes, data: bytes, flags: int) -> bytes:
-        """Send sign request to ESP32, return SSH-formatted signature"""
         # extract raw 32-byte key from SSH wire format key blob
         raw_key = self._extract_raw_key(key_blob)
 
@@ -297,7 +275,6 @@ class ESP32AgentBridge:
         return bytes([SSH_AGENT_SUCCESS])
 
     def handle_agent_request(self, data: bytes) -> bytes:
-        """Handle incoming SSH agent request from client"""
         if len(data) < 1:
             return self._create_failure()
 
@@ -357,7 +334,6 @@ class ESP32AgentBridge:
             return self._create_failure()
 
     def handle_client(self, client_sock: socket.socket):
-        """Handle a single SSH client connection"""
         try:
             while self.running:
                 try:
@@ -390,7 +366,6 @@ class ESP32AgentBridge:
             client_sock.close()
 
     def start_unix_server(self):
-        """Start Unix socket server for SSH agent"""
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
 

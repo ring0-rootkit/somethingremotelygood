@@ -1,4 +1,3 @@
-#include "config.h"
 #include "database.h"
 #include "server.h"
 #include "cli.h"

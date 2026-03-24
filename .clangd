@@ -1,2 +1,7 @@
 CompileFlags:
   CompilationDatabase: .
+
+If:
+  PathMatch: esp32/ssh_agent/.*\.(c|cpp|ino)$
+  CompileFlags:
+    CompilationDatabase: esp32/ssh_agent/
