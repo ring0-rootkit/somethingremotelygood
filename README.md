@@ -131,7 +131,7 @@ src/
 
 esp32/ssh_agent/      ESP32-C3 firmware (PlatformIO + Arduino)
 wrapper/              Python serial tools (keytool, agent bridge)
-conference/           CTDA 2024 article generators (docx)
+conference/           CTDA 2025 articles
 ```
 
 ## Security Properties
