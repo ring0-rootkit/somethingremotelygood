@@ -217,7 +217,7 @@ void handle_client(int client_fd) {
     int ssh_active = 1;
     int check_count = 0;
     int empty_count = 0;
-    while (ssh_active && check_count < 1800) {
+    while (ssh_active && check_count < 86400) { // 24h - max session length
         char cmd[512];
         snprintf(cmd, sizeof(cmd),
             "lxc exec %s -- sh -c 'grep \":0016 \" /proc/net/tcp 2>/dev/null | grep \" 01 \" | wc -l' 2>/dev/null || echo 0",
