@@ -64,6 +64,13 @@ void handle_client(int client_fd) {
         return;
     }
 
+    r = read(client_fd, containerid, sizeof(containerid)-1);
+    if (r <= 0) {
+        write(client_fd, "ERR NO_CONTAINER_ID", 19);
+        return;
+    }
+    containerid[r] = '\0';
+
     r = read(client_fd, signature, sizeof(signature));
     if (r <= 0) {
         write(client_fd, "ERR NOSIG", 8);
@@ -83,25 +90,20 @@ void handle_client(int client_fd) {
         return;
     }
 
-    char challenge_ext[sizeof(challenge) + strlen(userid) + strlen(containerid)];
-    snprintf(challenge_ext, sizeof(challenge_ext), "%s%s%s", challenge, userid, containerid);
-    printf("%s\n", challenge_ext);
+    size_t uid_len = strlen(userid);
+    size_t cid_len = strlen(containerid);
+    size_t ext_len = sizeof(challenge) + uid_len + cid_len;
+    uint8_t challenge_ext[ext_len];
+    memcpy(challenge_ext, challenge, sizeof(challenge));
+    memcpy(challenge_ext + sizeof(challenge), userid, uid_len);
+    memcpy(challenge_ext + sizeof(challenge) + uid_len, containerid, cid_len);
 
-    if (!verify_signature(pubkey_pem, (uint8_t *)challenge_ext, sizeof(challenge_ext), signature, sig_len)) {
+    if (!verify_signature(pubkey_pem, challenge_ext, ext_len, signature, sig_len)) {
         db_log_session_event(userid, "", "auth_fail");
         write(client_fd, "ERR VERIFY_FAIL", 15);
-        fprintf(stderr, "challenge: %128s\nsignature: %128s\n", challenge, signature);
         return;
     }
     db_log_session_event(userid, "", "auth_ok");
-    write(client_fd, "REQ CID", 7);
-
-    r = read(client_fd, containerid, sizeof(containerid)-1);
-    if (r <= 0) {
-        write(client_fd, "ERR NO_USER_ID", 13);
-        return;
-    }
-    containerid[r] = '\0';
 
     uint8_t container_key[CONTAINER_KEY_LEN];
     if (db_get_container_key(userid, containerid, container_key, sizeof(container_key)) != 0) {

@@ -259,7 +259,9 @@ func ConnectWithESP32Agent(host, port, userID, containerID, agentSocket string) 
 	}
 	fmt.Println("[+] Challenge received")
 
-	sig, err := agent.SignChallenge([]byte(challenge+userID+containerID))
+	writeLine(conn, []byte(containerID))
+
+	sig, err := agent.SignChallenge([]byte(challenge + userID + containerID))
 	if err != nil {
 		return fmt.Errorf("failed to sign with ESP32 agent: %w", err)
 	}
@@ -267,17 +269,6 @@ func ConnectWithESP32Agent(host, port, userID, containerID, agentSocket string) 
 	writeLine(conn, sig)
 
 	reply, err := readLine(conn)
-	if err != nil {
-		return fmt.Errorf("failed to read reply: %w", err)
-	}
-
-	if reply != "REQ CID" {
-		return fmt.Errorf("access denied: %s", reply)
-	}
-
-	writeLine(conn, []byte(containerID))
-
-	reply, err = readLine(conn)
 	if err != nil {
 		return fmt.Errorf("failed to read reply: %w", err)
 	}

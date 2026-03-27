@@ -79,7 +79,9 @@ func main() {
 	}
 	fmt.Println("[+] Challenge received")
 
-	sig, err := signChallenge(priv, []byte(challenge))
+	writeLine(conn, []byte(containerID))
+
+	sig, err := signChallenge(priv, []byte(challenge+userID+containerID))
 	if err != nil {
 		fmt.Println("[-] Failed to sign challenge:", err)
 		return
@@ -88,19 +90,6 @@ func main() {
 	writeLine(conn, sig)
 
 	reply, err := readLine(conn)
-	if err != nil {
-		fmt.Println("[-] Failed to read reply:", err)
-		return
-	}
-
-	if reply != "REQ CID" {
-		fmt.Println("[-] Access denied:", reply)
-		return
-	}
-
-	writeLine(conn, []byte(containerID))
-
-	reply, err = readLine(conn)
 	if err != nil {
 		fmt.Println("[-] Failed to read reply:", err)
 		return
