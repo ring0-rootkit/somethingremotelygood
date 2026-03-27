@@ -83,7 +83,11 @@ void handle_client(int client_fd) {
         return;
     }
 
-    if (!verify_signature(pubkey_pem, challenge, sizeof(challenge), signature, sig_len)) {
+    char challenge_ext[sizeof(challenge) + strlen(userid) + strlen(containerid)];
+    snprintf(challenge_ext, sizeof(challenge_ext), "%s%s%s", challenge, userid, containerid);
+    printf("%s\n", challenge_ext);
+
+    if (!verify_signature(pubkey_pem, (uint8_t *)challenge_ext, sizeof(challenge_ext), signature, sig_len)) {
         db_log_session_event(userid, "", "auth_fail");
         write(client_fd, "ERR VERIFY_FAIL", 15);
         fprintf(stderr, "challenge: %128s\nsignature: %128s\n", challenge, signature);

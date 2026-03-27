@@ -259,7 +259,7 @@ func ConnectWithESP32Agent(host, port, userID, containerID, agentSocket string) 
 	}
 	fmt.Println("[+] Challenge received")
 
-	sig, err := agent.SignChallenge([]byte(challenge))
+	sig, err := agent.SignChallenge([]byte(challenge+userID+containerID))
 	if err != nil {
 		return fmt.Errorf("failed to sign with ESP32 agent: %w", err)
 	}
