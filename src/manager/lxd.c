@@ -138,6 +138,21 @@ int lxd_setup_ssh_in_volume(const char *mount_point, const char *userid, const c
 
     printf("[INFO] SSH keys set up in volume for %s (%zu bytes)\n", userid, strlen(pubkey_ssh));
 
+    char bashrc[512];
+    snprintf(bashrc, sizeof(bashrc), "%s/.bashrc", mount_point);
+    if (access(bashrc, F_OK) != 0) {
+        f = fopen(bashrc, "w");
+        if (f) {
+            fprintf(f,
+                "export HISTFILE=~/.bash_history\n"
+                "export HISTSIZE=1000\n"
+                "export HISTFILESIZE=2000\n"
+                "shopt -s histappend\n");
+            fclose(f);
+            chmod(bashrc, 0644);
+        }
+    }
+
     return 0;
 }
 
