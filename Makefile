@@ -2,6 +2,9 @@
 
 all: manager client
 
+CFLAGS += $(shell pkg-config --cflags sqlcipher)
+LDFLAGS += $(shell pkg-config --libs sqlcipher)
+
 MANAGER_SRC = src/manager/main.c \
               src/manager/database.c \
               src/manager/crypto.c \
@@ -14,10 +17,10 @@ MANAGER_SRC = src/manager/main.c \
 MANAGER_OBJ = $(MANAGER_SRC:.c=.o)
 
 manager: $(MANAGER_OBJ)
-	gcc -o build/manager $(MANAGER_OBJ) -lsqlcipher -lssl -lcrypto -lpthread  -Wall -Wextra -Werror
+	clang -o build/manager $(MANAGER_OBJ) $(CFLAGS) $(LDFLAGS) -lssl -lcrypto -lpthread  -Wall -Wextra
 
 src/manager/%.o: src/manager/%.c
-	gcc -c $< -o $@ -I src/manager -Wall -Wextra -Werror
+	clang -c $< -o $@ -I src/manager -Wall $(CFLAGS) -Wextra
 
 client: src/client/*.go
 	go build -o build/client ./src/client/
@@ -143,11 +146,11 @@ FORCE:
 setup: FORCE
 	@echo "Installing dependencies..."
 	@if command -v pacman >/dev/null 2>&1; then \
-		sudo pacman -S --needed lxd cryptsetup gcc sqlcipher openssl go python; \
+		sudo pacman -S --needed lxd cryptsetup clang sqlcipher openssl go python; \
 	elif command -v apt >/dev/null 2>&1; then \
-		sudo apt install -y lxd cryptsetup gcc libsqlcipher-dev libssl-dev golang-go python3; \
+		sudo apt install -y lxd cryptsetup clang libsqlcipher-dev libssl-dev golang-go python3; \
 	else \
-		echo "Unsupported package manager. Install manually: lxd, cryptsetup, gcc, sqlcipher, openssl, go"; \
+		echo "Unsupported package manager. Install manually: lxd, cryptsetup, clang, sqlcipher, openssl, go"; \
 		exit 1; \
 	fi
 	@echo "Enabling LXD service..."
