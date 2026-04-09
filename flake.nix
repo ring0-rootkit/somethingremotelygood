@@ -108,6 +108,7 @@
             export CFLAGS="-I${pkgs.sqlcipher}/include -I${pkgs.openssl}/include"
             export LDFLAGS="-L${pkgs.sqlcipher}/lib -L${pkgs.openssl}/lib"
             export PKG_CONFIG_PATH="${pkgs.sqlcipher}/lib/pkgconfig:${pkgs.openssl}/lib/pkgconfig"
+            export CFLAGS="-isystem ${pkgs.clang.cc}/resource-root/include"
 
             # Build instructions
             echo ""
