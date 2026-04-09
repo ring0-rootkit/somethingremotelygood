@@ -18,6 +18,7 @@
           sqlcipher
           openssl
           lxc
+          incus
           cryptsetup
           go
           python3
@@ -46,7 +47,6 @@
           pkg-config
           git
           openssh
-          lxd
           lxc
           cryptsetup
           utillinux
